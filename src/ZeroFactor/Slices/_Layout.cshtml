@@ -9,14 +9,12 @@
         :root {
             color-scheme: light dark;
             --bg: #fff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --surface: #f6f8fa;
-            --accent: #2f6290; --accent-fg: #fff; --focus: #2f629066;
-            --warn-bg: #fbf6e6; --warn-border: #d4a72c; --error: #b42318; --error-bg: #fdf0ee;
+            --accent: #2f6290; --accent-fg: #fff; --error: #b42318;
         }
         @@media (prefers-color-scheme: dark) {
             :root {
                 --bg: #16191d; --fg: #e3e6ea; --muted: #9aa3ad; --border: #343b44; --surface: #1d2126;
-                --accent: #6f9cc6; --accent-fg: #0e1114; --focus: #6f9cc666;
-                --warn-bg: #2a2416; --warn-border: #9e7b28; --error: #f0857a; --error-bg: #2c1b1a;
+                --accent: #6f9cc6; --accent-fg: #0e1114; --error: #f0857a;
             }
         }
         *, *::before, *::after { box-sizing: border-box; }
@@ -39,7 +37,6 @@
         label:has(> input[type=checkbox]) { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
         input[type=checkbox] { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
         :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
         ::placeholder { color: var(--muted); opacity: .7; }
         .field { margin-bottom: 1.25rem; }
         form > input[type=email] { margin-bottom: 1rem; }
@@ -57,11 +54,10 @@
         #continue, #register, button[id$="-save"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
         #continue:hover, #register:hover, button[id$="-save"]:hover { border-color: var(--accent); filter: brightness(1.08); }
         button[id$="-delete"] { color: var(--error); background: transparent; }
-        button[id$="-delete"]:hover { border-color: var(--error); background: var(--error-bg); }
-        .warn, .error { font-size: .875rem; padding: .5rem .75rem; border-left: 3px solid; border-radius: 0 4px 4px 0; }
-        .warn { background: var(--warn-bg); border-color: var(--warn-border); margin-bottom: 1.5rem; }
-        .error { background: var(--error-bg); border-color: var(--error); color: var(--error); }
-        .field .error, fieldset .error, form > .error { margin: .375rem 0 0; padding: .25rem .625rem; }
+        button[id$="-delete"]:hover { border-color: var(--error); }
+        .warn { font-size: .875rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1.5rem; }
+        .error { font-weight: 500; color: var(--error); }
+        .field .error, fieldset .error, form > .error { margin: .375rem 0 0; font-size: .875rem; }
         .users { list-style: none; padding: 0; margin: 0; }
         .users button { display: block; width: 100%; text-align: left; margin: 0 0 .5rem; padding: .625rem .875rem; font-weight: 400; background: var(--bg); }
         .users button:hover { border-color: var(--accent); background: var(--surface); }
@@ -71,8 +67,8 @@
         table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; font-size: .875rem; }
         th, td { text-align: left; vertical-align: top; padding: .5rem .75rem .5rem 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
         th { font-weight: 600; color: var(--muted); }
-        .user { border: 1px solid var(--border); border-radius: 6px; padding: 1rem 1.25rem 1.25rem; margin-bottom: 1rem; }
-        .user form + form { margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--border); }
+        .user { padding-top: 1.25rem; margin-bottom: 2rem; border-top: 1px solid var(--border); }
+        .user form + form { margin-top: .75rem; }
         dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 0 0 1.25rem; font-size: .875rem; }
         dt { color: var(--muted); }
         dd { margin: 0; overflow-wrap: anywhere; }
