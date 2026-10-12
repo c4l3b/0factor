@@ -1,0 +1,29 @@
+@page
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Shop</title></head>
+<body>
+<h1>Shop</h1>
+@if (User.Identity?.IsAuthenticated != true)
+{
+    <p><a href="/login" id="sign-in" data-testid="sign-in">Sign in</a></p>
+}
+else
+{
+    <p data-testid="signed-in-as">Signed in as @User.Identity.Name</p>
+    <ul>
+        <li><a href="/admin" id="admin" data-testid="admin">Admin page (role admin)</a></li>
+        <li><a href="/call/orders" id="call-orders" data-testid="call-orders">Call Api /orders</a></li>
+        <li><a href="/call/tenant" id="call-tenant" data-testid="call-tenant">Call Api /tenant (claim tenant_id)</a></li>
+        <li><a href="/logout" id="sign-out" data-testid="sign-out">Sign out</a></li>
+    </ul>
+    <h2>Claims</h2>
+    <table data-testid="claims">
+        @foreach (var claim in User.Claims)
+        {
+            <tr><th>@claim.Type</th><td>@claim.Value</td></tr>
+        }
+    </table>
+}
+</body>
+</html>

@@ -53,6 +53,8 @@ builder.Services.AddAuthentication()
     .AddKeycloakOpenIdConnect("keycloak", realm: "shop", options => { /* ... */ });
 ```
 
+[`samples/`](samples) is a runnable Aspire app (`aspire run --apphost samples/AppHost`): a Razor Pages Web app that signs in with `AddKeycloakOpenIdConnect` and calls an Api protected by `AddKeycloakJwtBearer`, with a role-gated page and a claim-gated endpoint. Its AppHost differs from the Keycloak version by one line.
+
 `AddZeroFactor` mirrors `AddKeycloak`: endpoint `http` (target port 8080), image `ghcr.io/c4l3b/0factor` tagged with the package version, `/health` health check. `WithRealmImport` copies files to `/opt/keycloak/data/import`; `WithDataVolume` / `WithDataBindMount` mount `/data`. Use a stable `port`: browser cookies and the token issuer include it. There is no admin user, management port or OTLP export.
 
 ## Keycloak compatibility
@@ -90,6 +92,12 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 - Refresh tokens are RS256 (Keycloak uses HS512) and stateless. Offline tokens expire after 30 days instead of never.
 - Token `scope` is the requested scopes plus `profile email`; client scopes aren't modeled. Default-role composites are fixed to Keycloak's defaults.
 - The `password` grant ignores the password.
+
+### Client compatibility
+
+- **ASP.NET Core OIDC and JwtBearer** (via `Aspire.Keycloak.Authentication`): tested end to end in CI against the [`samples/`](samples) app and the real container.
+- **keycloak-js:** needs `checkLoginIframe: false`. Untested.
+- **Others** (oidc-client-ts, Auth.js Keycloak provider): should work through discovery. Untested; tests welcome.
 
 ## Roles and custom claims
 

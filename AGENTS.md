@@ -57,7 +57,8 @@ Dockerfile
 ```bash
 aspire run                                              # dev: dashboard + server at http://localhost:8080
 dotnet build
-dotnet test
+dotnet test                                             # end-to-end test skipped unless ZF_E2E_IMAGE is set
+docker build -t 0factor:e2e . && ZF_E2E_IMAGE=0factor:e2e dotnet test   # also runs samples/ end to end
 dotnet publish src/ZeroFactor -c Release -r linux-x64   # must finish with 0 warnings
 docker build -t 0factor .
 docker run --rm -p 8080:8080 0factor

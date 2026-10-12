@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" Version="13.6.1" />
     <PackageReference Include="Aspire.Keycloak.Authentication" Version="13.6.1-preview.1.26506.6" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.23.0" />
@@ -19,6 +20,9 @@
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\ZeroFactor\ZeroFactor.csproj" />
     <ProjectReference Include="..\..\src\ZeroFactor.Aspire.Hosting\ZeroFactor.Aspire.Hosting.csproj" />
+    <!-- Aliased: its top-level Program would clash with the server's in WebApplicationFactory<Program>. -->
+    <!-- Aliased: the AppHost's top-level Program would clash with the server's, used by WebApplicationFactory<Program>. -->
+    <ProjectReference Include="..\..\samples\AppHost\AppHost.csproj" Aliases="AppHost" />
     <None Include="..\fixtures\**" LinkBase="fixtures" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

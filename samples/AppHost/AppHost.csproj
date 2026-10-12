@@ -1,0 +1,19 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.1">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- The DCP and dashboard packages instead of the Aspire CLI bundle, so `dotnet test` runs the AppHost in CI. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Api\Api.csproj" />
+    <ProjectReference Include="..\Web\Web.csproj" />
+    <!-- Apps use `dotnet add package ZeroFactor.Aspire.Hosting`; the sample builds against the source. -->
+    <ProjectReference Include="..\..\src\ZeroFactor.Aspire.Hosting\ZeroFactor.Aspire.Hosting.csproj" IsAspireProjectResource="false" />
+  </ItemGroup>
+
+</Project>
