@@ -43,6 +43,8 @@ These follow from decisions in #1. Don't change them without updating #1 first.
 
 ```
 0factor.slnx
+apphost.cs                       # dev-only Aspire AppHost (file-based), run with `aspire run`
+aspire.config.json
 src/ZeroFactor/                  # server (Native AOT)
 src/ZeroFactor.Aspire.Hosting/   # Aspire hosting package (AddZeroFactor)
 tests/ZeroFactor.Tests/          # xUnit v3 + WebApplicationFactory
@@ -53,6 +55,7 @@ Dockerfile
 ## Commands
 
 ```bash
+aspire run                                              # dev: dashboard + server at http://localhost:8080
 dotnet build
 dotnet test
 dotnet publish src/ZeroFactor -c Release -r linux-x64   # must finish with 0 warnings
