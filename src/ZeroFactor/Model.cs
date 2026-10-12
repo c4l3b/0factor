@@ -29,6 +29,8 @@ public class Realm
     public bool AgentNotesRequired { get; set; } = true;
     /// <summary>No imported clients: any client_id, redirect URI and secret is accepted. Derived on import.</summary>
     public bool Lenient { get; set; }
+    /// <summary>Generated on first use; preserved across re-imports.</summary>
+    public SigningKey? SigningKey { get; set; }
 
     public User? FindUser(string username) =>
         Users.Find(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
@@ -110,6 +112,14 @@ public class User
     public DateTimeOffset? LastLoginAt { get; set; }
     /// <summary>Arbitrary JSON merged into tokens and userinfo.</summary>
     public JsonObject? Claims { get; set; }
+}
+
+public class SigningKey
+{
+    /// <summary>Base64 PKCS#8 RSA private key.</summary>
+    public string PrivateKey { get; set; } = "";
+    /// <summary>Base64 DER self-signed X.509 certificate for the key (JWKS <c>x5c</c>).</summary>
+    public string Certificate { get; set; } = "";
 }
 
 public class RegistrationField
