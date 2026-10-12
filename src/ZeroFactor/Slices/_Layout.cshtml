@@ -1,0 +1,19 @@
+@inherits RazorLayoutSlice<LayoutModel>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@Model.Title · 0factor</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+        h1 { font-size: 1.5rem; }
+        .warn { background: #fff3cd; border: 1px solid #e0c36b; padding: .5rem .75rem; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <main>
+        @await RenderBodyAsync()
+    </main>
+</body>
+</html>

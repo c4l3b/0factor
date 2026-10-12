@@ -1,0 +1,9 @@
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="hello-title">0factor</h1>
+<p>Mock OIDC provider for local development. Login is an email address only.</p>
+<p class="warn" data-testid="prod-warning">Never use this in production.</p>
+
+@functions {
+    public LayoutModel LayoutModel => new("Hello");
+}
