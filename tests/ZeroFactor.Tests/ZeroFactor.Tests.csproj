@@ -16,6 +16,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\ZeroFactor\ZeroFactor.csproj" />
+    <None Include="..\fixtures\**" LinkBase="fixtures" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
