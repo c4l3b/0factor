@@ -8,7 +8,7 @@ Login is just an email address. No password, no MFA. The login page lists existi
 > **Never use this in production.** Anyone who can reach it can sign in as anyone.
 
 > [!NOTE]
-> **Status: planned, not yet implemented.** This README describes the target behavior. Work is tracked in [#1](https://github.com/c4l3b/0factor/issues/1) and on the [project board](https://github.com/users/c4l3b/projects/6).
+> The container image and the `ZeroFactor.Aspire.Hosting` NuGet package are published on the first `v*` release tag. Until then, [run from source](#run-from-source).
 
 ## Why
 
@@ -27,9 +27,27 @@ docker run --rm -p 8080:8080 -v zf-data:/data ghcr.io/c4l3b/0factor
 No config needed. Any realm is created on first use:
 
 - Discovery: `http://localhost:8080/realms/myrealm/.well-known/openid-configuration`
+- Login page: point any OIDC client at that discovery URL, with any `client_id` and redirect URI
 - Management page: `http://localhost:8080/_0factor/`
 
-The image is a Native AOT binary on a distroless (`runtime-deps` chiseled) base, runs as non-root, and targets under 40 MB.
+Get a token without a browser, for a user that already exists (register one through the login page, or [import it](#roles-and-custom-claims)):
+
+```bash
+curl -s -d grant_type=password -d client_id=myapp -d username=alice@example.com \
+  http://localhost:8080/realms/myrealm/protocol/openid-connect/token
+```
+
+The image is a Native AOT binary on a distroless (`runtime-deps` chiseled) base and runs as non-root (UID 1654). It is 24.4 MB (arm64) / 25.7 MB (amd64) uncompressed, 9.6 / 11.0 MB gzipped.
+
+### Run from source
+
+Needs the .NET 10 SDK (and the [Aspire CLI](https://aspire.dev) for `aspire run`):
+
+```bash
+git clone https://github.com/c4l3b/0factor && cd 0factor
+aspire run                                        # dashboard + server at http://localhost:8080, data in ./.data
+docker build -t ghcr.io/c4l3b/0factor:0.1.0 .     # or build the image the Aspire package and samples expect
+```
 
 ## Aspire
 
@@ -53,7 +71,7 @@ builder.Services.AddAuthentication()
     .AddKeycloakOpenIdConnect("keycloak", realm: "shop", options => { /* ... */ });
 ```
 
-[`samples/`](samples) is a runnable Aspire app (`aspire run --apphost samples/AppHost`): a Razor Pages Web app that signs in with `AddKeycloakOpenIdConnect` and calls an Api protected by `AddKeycloakJwtBearer`, with a role-gated page and a claim-gated endpoint. Its AppHost differs from the Keycloak version by one line.
+[`samples/`](samples) is a runnable Aspire app (`aspire run --apphost samples/AppHost/AppHost.csproj`, needs Docker): a Razor Pages Web app that signs in with `AddKeycloakOpenIdConnect` and calls an Api protected by `AddKeycloakJwtBearer`, with a role-gated page and a claim-gated endpoint. Its AppHost differs from the Keycloak version by one line.
 
 `AddZeroFactor` mirrors `AddKeycloak`: endpoint `http` (target port 8080), image `ghcr.io/c4l3b/0factor` tagged with the package version, `/health` health check. `WithRealmImport` copies files to `/opt/keycloak/data/import`; `WithDataVolume` / `WithDataBindMount` mount `/data`. Use a stable `port`: browser cookies and the token issuer include it. There is no admin user, management port or OTLP export.
 
@@ -65,7 +83,7 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 |---|---|
 | Discovery | `/.well-known/openid-configuration` |
 | JWKS | `/protocol/openid-connect/certs` |
-| Realm info | `/realms/{realm}` |
+| Realm info | *(the realm root)* |
 | Authorize | `/protocol/openid-connect/auth` |
 | Token | `/protocol/openid-connect/token` |
 | Userinfo | `/protocol/openid-connect/userinfo` |
@@ -92,6 +110,7 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 - Refresh tokens are RS256 (Keycloak uses HS512) and stateless. Offline tokens expire after 30 days instead of never.
 - Token `scope` is the requested scopes plus `profile email`; client scopes aren't modeled. Default-role composites are fixed to Keycloak's defaults.
 - The `password` grant ignores the password.
+- `response_mode=form_post` (the ASP.NET Core default) renders a **Continue** button instead of auto-submitting with JavaScript. Click it once.
 
 ### Client compatibility
 
@@ -171,7 +190,7 @@ Paste this into your app's `CLAUDE.md` / `AGENTS.md`, replacing the placeholders
 
 Local auth is 0factor (mock Keycloak) at http://localhost:8080, realm `<realm>`. There are no passwords.
 
-- **Sign in through the app:** on the login page, click an existing user. Read the agent notes and roles to pick the right one.
+- **Sign in through the app:** on the login page, click an existing user. Read the agent notes and roles to pick the right one. If a page then shows a **Continue** button, click it.
 - **Create a user:** type a new email and fill the registration form. Set roles and claims if the test needs them, and write agent notes saying what the user is for.
 - **Change a user's roles, claims or notes:** use http://localhost:8080/_0factor/realms/<realm>.
 - **Get a token without a browser:**
