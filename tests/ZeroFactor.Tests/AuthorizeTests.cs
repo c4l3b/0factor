@@ -342,7 +342,11 @@ public sealed class AuthorizeTests : IDisposable
         Assert.Contains("<input id=\"realmRoles\" name=\"realmRoles\"", html);
         Assert.Contains("<input id=\"clientRoles\" name=\"clientRoles\"", html);
         Assert.Contains("<textarea id=\"claims\" name=\"claims\"", html);
-        Assert.Contains("<textarea id=\"agentNotes\" name=\"agentNotes\" required=\"required\"", html);
+        Assert.Contains("<label for=\"agentNotes\">Agent notes</label>", html);
+        Assert.Contains("<textarea id=\"agentNotes\" name=\"agentNotes\" data-testid=\"agentNotes\">", html);
+        Assert.Contains("<label for=\"userId\">User ID (optional)</label>", html);
+        Assert.Contains("<input id=\"userId\" name=\"userId\" maxlength=\"255\" data-testid=\"userId\">", html);
+        Assert.Contains("Leave blank to generate one.", html);
         Assert.Contains("Shown on the login page so agents can pick the right account later.", html);
         Assert.True(html.IndexOf("id=\"tenant\"") < html.IndexOf("Roles and claims") && html.IndexOf("Roles and claims") < html.IndexOf("id=\"agentNotes\""));
         Assert.Contains(">Create user and sign in</button>", html);
@@ -392,13 +396,51 @@ public sealed class AuthorizeTests : IDisposable
         Assert.Contains("Roles: admin, auditor, store.api:orders.write, store.api:orders:read", listed);
     }
 
+    [Fact]
+    public async Task Registration_with_chosen_id_sets_sub_and_rejects_duplicates()
+    {
+        File.WriteAllText(Path.Combine(importDir, "shop.json"), Shop);
+        var factory = Start();
+        var client = Browser(factory);
+        const string id = "auth0|seed/42";
+
+        var login = await Html(await client.GetAsync(Auth("shop", Request + "&scope=openid"), Ct));
+        var html = await Html(await Post(client, "shop", Field(login, "auth"), "seed@example.com"));
+        var response = await PostRegistration(client, "shop", ("auth", Field(html, "auth")), ("email", "seed@example.com"),
+            ("firstName", "Seed"), ("lastName", "User"), ("userId", $"  {id} "));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var store = factory.Services.GetRequiredService<Store>();
+        Assert.Equal(id, store.GetRealm("shop")!.FindUser("seed@example.com")!.Id);
+        Assert.Null(store.GetRealm("shop")!.FindUser("seed@example.com")!.AgentNotes);
+
+        var tokens = await TokenTests.Exchange(client, "shop", ("grant_type", "authorization_code"), ("client_id", "web"),
+            ("code", Query(response)["code"]!), ("redirect_uri", "http://app.test/cb"));
+        Assert.Equal(id, (string?)TokenTests.Payload((string)tokens["access_token"]!)["sub"]);
+        Assert.Equal(id, (string?)TokenTests.Payload((string)tokens["id_token"]!)["sub"]);
+        using var userinfo = new HttpRequestMessage(HttpMethod.Get, "/realms/shop/protocol/openid-connect/userinfo");
+        userinfo.Headers.Authorization = new("Bearer", (string)tokens["access_token"]!);
+        Assert.Contains($"\"sub\":\"{id}\"", await (await client.SendAsync(userinfo, Ct)).Content.ReadAsStringAsync(Ct));
+
+        // A taken id is a field error; the other values are kept.
+        login = await Html(await client.GetAsync(Auth("shop", Request + "&prompt=login"), Ct));
+        html = await Html(await Post(client, "shop", Field(login, "auth"), "other@example.com"));
+        var duplicate = await PostRegistration(client, "shop", ("auth", Field(html, "auth")), ("email", "other@example.com"),
+            ("firstName", "Otto"), ("lastName", "Other"), ("userId", id), ("agentNotes", "kept"));
+        Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+        var page = await Html(duplicate);
+        Assert.Contains("data-testid=\"userId-error\">User ID already exists.</p>", page);
+        Assert.Contains("value=\"Otto\"", page);
+        Assert.Contains(">kept</textarea>", page);
+        Assert.Null(store.GetRealm("shop")!.FindUser("other@example.com"));
+    }
+
     [Theory]
     [InlineData("claims", "{\"tenant_id\": ", "Invalid JSON:")]
     [InlineData("claims", "[1, 2]", "Claims must be a JSON object")]
     [InlineData("claims", "{\"sub\": \"x\", \"realm_access\": {}}", "Reserved claim names can&#x27;t be set: sub, realm_access.")]
     [InlineData("clientRoles", "orders.write", "is not a client:role pair")]
     [InlineData("firstName", "", "Please specify this field.")]
-    [InlineData("agentNotes", "", "Please specify this field.")]
+    [InlineData("userId", "has space", "User ID can&#x27;t contain spaces.")]
     [InlineData("tenant", "initech", "Choose one of the options.")]
     public async Task Invalid_registration_rerenders_with_values_and_persists_nothing(string field, string value, string message)
     {
@@ -418,7 +460,7 @@ public sealed class AuthorizeTests : IDisposable
         var html = await Html(response);
         Assert.Matches($"<p class=\"error\" id=\"{field}-error\" data-testid=\"{field}-error\">[^<]*{Regex.Escape(message)}", html);
         Assert.Contains("value=\"brand-new-role\"", html);
-        if (field != "agentNotes") Assert.Contains(">notes kept</textarea>", html);
+        Assert.Contains(">notes kept</textarea>", html);
         Assert.False(response.Headers.Contains("Set-Cookie"));
 
         var realm = factory.Services.GetRequiredService<Store>().GetRealm("shop")!;
@@ -438,7 +480,6 @@ public sealed class AuthorizeTests : IDisposable
         Assert.DoesNotContain("firstName", html);
 
         var store = factory.Services.GetRequiredService<Store>();
-        store.Update(_ => store.GetRealm("fresh")!.AgentNotesRequired = false);
         var response = await PostRegistration(client, "fresh", ("auth", Field(html, "auth")), ("email", "x@example.com"), ("dept", "ops"));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         var user = store.GetRealm("fresh")!.FindUser("x@example.com")!;

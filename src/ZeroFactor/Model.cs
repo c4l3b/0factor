@@ -26,7 +26,7 @@ public class Realm
 
     // 0factor extensions
     public List<RegistrationField>? RegistrationFields { get; set; }
-    public bool AgentNotesRequired { get; set; } = true;
+    public bool AgentNotesRequired { get; set; }
     /// <summary>No imported clients: any client_id, redirect URI and secret is accepted. Derived on import.</summary>
     public bool Lenient { get; set; }
     /// <summary>Generated on first use; preserved across re-imports.</summary>

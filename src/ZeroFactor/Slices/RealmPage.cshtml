@@ -28,10 +28,11 @@
     var key = user.Email ?? user.Username;
     var values = user.Id == Model.EditedId ? Model.Values : Manage.Values(user);
     var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(n => !string.IsNullOrEmpty(n)));
-    var action = $"{Model.Url}/users/{user.Id}";
+    var action = $"{Model.Url}/users/{Uri.EscapeDataString(user.Id)}";
     <section class="user" id="user-@key" data-testid="user-@key">
         <h3>@key@(user.Enabled ? "" : " (disabled)")</h3>
         <dl>
+            <dt>User ID</dt><dd data-testid="user-id">@user.Id</dd>
             <dt>Name</dt><dd data-testid="user-name">@(name == "" ? "-" : name)</dd>
             <dt>Attributes</dt><dd data-testid="user-attributes">@(user.Attributes.Count == 0 ? "-" : string.Join("; ", user.Attributes.Select(a => $"{a.Key}: {string.Join(", ", a.Value)}")))</dd>
             <dt>Last login</dt><dd data-testid="user-last-login">@(user.LastLoginAt?.ToString("u") ?? "never")</dd>

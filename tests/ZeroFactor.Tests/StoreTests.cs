@@ -92,13 +92,14 @@ public sealed class StoreTests : IDisposable
         var realm = store.GetRealm("shop")!;
         var aliceId = realm.FindUser("alice@example.com")!.Id;
         store.Update(_ => realm.Users.Add(new User { Id = "registered", Username = "carol@example.com" }));
+        store.Update(_ => realm.Users.Add(new User { Id = "taken", Username = "erin@example.com" }));
 
         Assert.True(realm.Lenient);
         Assert.Contains(realm.Roles.Realm, r => r.Name == "admin");
         Assert.Contains(realm.Roles.Client["store.api"], r => r.Name == "orders.write");
         Assert.Equal(42, (int)realm.FindUser("alice@example.com")!.Claims!["org"]!["id"]!);
 
-        ImportFile("shop.json", """{ "realm": "shop", "accessTokenLifespan": 60, "users": [ { "username": "alice@example.com", "agentNotes": "edited" } ] }""");
+        ImportFile("shop.json", """{ "realm": "shop", "accessTokenLifespan": 60, "users": [ { "username": "alice@example.com", "agentNotes": "edited" }, { "id": "taken", "username": "bob@example.com" } ] }""");
         store = Store.Open(dataDir);
         store.Import(importDir);
         realm = store.GetRealm("shop")!;
@@ -109,6 +110,9 @@ public sealed class StoreTests : IDisposable
         Assert.Equal(aliceId, alice.Id);
         Assert.Equal("edited", alice.AgentNotes);
         Assert.Equal("registered", realm.FindUser("carol@example.com")!.Id);
+        // A file user's id wins over a registered user that chose the same id.
+        Assert.Equal("taken", realm.FindUser("bob@example.com")!.Id);
+        Assert.Null(realm.FindUser("erin@example.com"));
     }
 
     [Fact]

@@ -14,6 +14,7 @@ public record RegisterModel(string Realm, string Action, string Auth, string Ema
 public static class Register
 {
     const string Required = "Please specify this field.";
+    const int MaxIdLength = 255;
 
     public static void MapRegister(this WebApplication app) =>
         app.MapPost("/realms/{realm}/login-actions/registration", Submit);
@@ -42,6 +43,14 @@ public static class Register
         var values = form.Keys.ToDictionary(k => k, k => form[k].ToString().Trim());
         var errors = new Dictionary<string, string>();
         var user = new User { Username = email, Email = email, EmailVerified = true };
+
+        if (values.GetValueOrDefault("userId") is { Length: > 0 } id)
+        {
+            if (id.Length > MaxIdLength) errors["userId"] = $"User ID can be at most {MaxIdLength} characters.";
+            else if (id.Any(char.IsWhiteSpace)) errors["userId"] = "User ID can't contain spaces.";
+            else if (r.Users.Exists(u => u.Id == id)) errors["userId"] = "User ID already exists.";
+            else user.Id = id;
+        }
 
         if (!email.Contains('@')) errors["email"] = "Invalid email address.";
         else if (Authorize.FindByEmail(r, email) is not null) errors["email"] = "Email already exists.";

@@ -15,6 +15,13 @@
     @{ Error("email"); }
     <p><a href="@Model.LoginUrl" id="different-email" data-testid="different-email">Use a different email</a></p>
 
+    <div class="field">
+        <label for="userId">User ID (optional)</label>
+        <input id="userId" name="userId" maxlength="255" value="@Model.Values.GetValueOrDefault("userId")" data-testid="userId">
+        <p class="help" id="userId-help">Optional. Leave blank to generate one. Use this when your test data already references a user ID. Becomes the sub claim.</p>
+        @{ Error("userId"); }
+    </div>
+
     @foreach (var field in Model.Fields)
     {
         var value = Model.Values.GetValueOrDefault(field.Name);

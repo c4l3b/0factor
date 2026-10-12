@@ -93,6 +93,8 @@ public class Store
                 imported.Users.Remove(stored);
             }
             Initialize(user);
+            // The file wins: a stored user (e.g. registered with a chosen id) holding this id is replaced.
+            imported.Users.RemoveAll(u => u.Id == user.Id);
             imported.Users.Add(user);
         }
         foreach (var user in imported.Users) imported.EnsureRoles(user);

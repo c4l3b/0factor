@@ -15,7 +15,7 @@ Login is just an email address. No password, no MFA. The login page lists existi
 Coding agents won't type usernames and passwords into login forms. That blocks them from testing any app behind auth. 0factor removes the password entirely:
 
 - **Login page:** type an email, or click an existing user from the list. Each user shows its roles and *agent notes* (for example "admin in tenant acme, used for billing tests").
-- **Unknown email:** goes to a registration page with configurable fields, roles, custom claims and agent notes.
+- **Unknown email:** goes to a registration page with configurable fields, roles, custom claims, optional agent notes and an optional user ID (the `sub`), so a new user can match IDs your seed data already uses.
 - **No browser needed:** the `password` grant takes a username and ignores the password, so `curl` can get a token.
 
 ## Quick start
@@ -156,7 +156,7 @@ These fields are ignored by real Keycloak:
 | Field | Purpose |
 |---|---|
 | `registrationFields` | Extra fields on the registration page. Types: `text`, `email`, `tel`, `number`, `date`, `checkbox`, `select`, `textarea`. A field's optional `claim` puts its value in tokens. |
-| `agentNotesRequired` | Default `true`. |
+| `agentNotesRequired` | Default `false`. `true` makes agent notes required on registration and the management page. |
 | `users[].claims`, `users[].agentNotes` | Per-user extra claims and notes. |
 
 ```json
@@ -191,7 +191,7 @@ Paste this into your app's `CLAUDE.md` / `AGENTS.md`, replacing the placeholders
 Local auth is 0factor (mock Keycloak) at http://localhost:8080, realm `<realm>`. There are no passwords.
 
 - **Sign in through the app:** on the login page, click an existing user. Read the agent notes and roles to pick the right one. If a page then shows a **Continue** button, click it.
-- **Create a user:** type a new email and fill the registration form. Set roles and claims if the test needs them, and write agent notes saying what the user is for.
+- **Create a user:** type a new email and fill the registration form. Set roles and claims if the test needs them. Agent notes are optional; write a line saying what the user is for. Leave User ID blank unless test data already references a user ID: whatever you enter becomes the `sub` claim.
 - **Change a user's roles, claims or notes:** use http://localhost:8080/_0factor/realms/<realm>.
 - **Get a token without a browser:**
   `curl -s -d grant_type=password -d client_id=<client> -d username=<email> http://localhost:8080/realms/<realm>/protocol/openid-connect/token`

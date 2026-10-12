@@ -72,6 +72,24 @@ public sealed class ManageTests : IDisposable
     }
 
     [Fact]
+    public async Task User_with_a_chosen_id_is_shown_and_editable()
+    {
+        var (_, client, store) = Start();
+        var realm = store.GetRealm("test")!;
+        store.AddUser(realm, new User { Id = "auth0|seed/42", Username = "seed@example.com", Email = "seed@example.com" });
+
+        var page = await Page(client, "/_0factor/realms/test");
+        Assert.Contains("<dd data-testid=\"user-id\">auth0|seed/42</dd>", page);
+        Assert.Contains("action=\"/_0factor/realms/test/users/auth0%7Cseed%2F42\"", page);
+
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/_0factor/realms/test/users/auth0%7Cseed%2F42",
+            new FormUrlEncodedContent([new("agentNotes", "seeded")]), Ct)).StatusCode);
+        Assert.Equal("seeded", realm.FindUser("seed@example.com")!.AgentNotes);
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/_0factor/realms/test/users/auth0%7Cseed%2F42/delete", null, Ct)).StatusCode);
+        Assert.Null(realm.FindUser("seed@example.com"));
+    }
+
+    [Fact]
     public async Task Edited_notes_show_on_the_login_page()
     {
         var (_, client, store) = Start();
@@ -116,7 +134,7 @@ public sealed class ManageTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         var html = await Html(bad);
         Assert.Contains("data-testid=\"alice@example.com-claims-error\">Reserved claim names can&#x27;t be set: sub.", html);
-        Assert.Contains("data-testid=\"alice@example.com-agentNotes-error\"", html);
+        Assert.DoesNotContain("data-testid=\"alice@example.com-agentNotes-error\"", html);
         Assert.Equal("acme", (string?)alice.Claims!["tenant_id"]);
     }
 

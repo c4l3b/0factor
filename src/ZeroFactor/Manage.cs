@@ -25,7 +25,7 @@ public static class Manage
 
     static async Task<IResult> Save(string realm, string id, HttpContext context, Store store)
     {
-        if (Find(store, realm) is not { } r || r.Users.Find(u => u.Id == id) is not { } user)
+        if (Find(store, realm) is not { } r || FindUser(r, id) is not { } user)
             return Authorize.Error("User not found.", StatusCodes.Status404NotFound);
         var form = await context.Request.ReadFormAsync();
         var values = form.Keys.ToDictionary(k => k, k => form[k].ToString().Trim());
@@ -44,7 +44,7 @@ public static class Manage
 
     static IResult Delete(string realm, string id, HttpContext context, Store store)
     {
-        if (Find(store, realm) is not { } r || r.Users.Find(u => u.Id == id) is not { } user)
+        if (Find(store, realm) is not { } r || FindUser(r, id) is not { } user)
             return Authorize.Error("User not found.", StatusCodes.Status404NotFound);
         store.Update(_ => r.Users.Remove(user));
         return Results.Redirect(Url(context, r) + QueryString.Create("deleted", user.Email ?? user.Username));
@@ -58,6 +58,10 @@ public static class Manage
         ["claims"] = user.Claims?.ToJsonString() ?? "",
         ["agentNotes"] = user.AgentNotes ?? "",
     };
+
+    // Routing decodes the path except %2F, and imported ids can contain '/'.
+    static User? FindUser(Realm realm, string id) =>
+        realm.Users.Find(u => u.Id == id.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase));
 
     static Realm? Find(Store store, string name) => store.Realms.Find(r => r.Name == name);
 
