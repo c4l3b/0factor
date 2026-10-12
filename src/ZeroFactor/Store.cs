@@ -12,12 +12,17 @@ public class Store
     readonly Lock gate = new();
     readonly string path;
     readonly bool strict;
+    readonly List<RegistrationField>? registrationFields;
     readonly StoreData data;
 
-    Store(string path, bool strict, StoreData data) => (this.path, this.strict, this.data) = (path, strict, data);
+    Store(string path, bool strict, List<RegistrationField>? registrationFields, StoreData data) =>
+        (this.path, this.strict, this.registrationFields, this.data) = (path, strict, registrationFields, data);
 
-    /// <summary>Missing file → empty store. Unreadable file → throws and leaves the file untouched.</summary>
-    public static Store Open(string dataDir, bool strict = false)
+    /// <summary>
+    /// Missing file → empty store. Unreadable file → throws and leaves the file untouched.
+    /// <paramref name="registrationFields"/> are used by auto-created realms.
+    /// </summary>
+    public static Store Open(string dataDir, bool strict = false, List<RegistrationField>? registrationFields = null)
     {
         var path = Path.Combine(dataDir, "0factor.json");
         StoreData data;
@@ -31,7 +36,7 @@ public class Store
         {
             throw new InvalidOperationException($"Cannot parse {path}: {e.Message} Fix or delete the file; it was not modified.", e);
         }
-        return new Store(path, strict, data);
+        return new Store(path, strict, registrationFields, data);
     }
 
     /// <summary>
@@ -59,6 +64,9 @@ public class Store
                     throw new InvalidOperationException($"Cannot parse realm import {file}: {e.Message}", e);
                 }
                 if (imported.Name == "") throw new InvalidOperationException($"Realm import {file} has no \"realm\" name.");
+                foreach (var user in imported.Users)
+                    if (User.Reserved(user.Claims) is { Count: > 0 } reserved)
+                        throw new InvalidOperationException($"Realm import {file}: user {user.Username} sets reserved claims: {string.Join(", ", reserved)}.");
                 Merge(imported);
             }
             Save();
@@ -106,7 +114,7 @@ public class Store
         {
             var realm = data.Realms.Find(r => r.Name == name);
             if (realm is not null || strict) return realm;
-            realm = new Realm { Name = name, RegistrationAllowed = true, Lenient = true };
+            realm = new Realm { Name = name, RegistrationAllowed = true, Lenient = true, RegistrationFields = registrationFields };
             data.Realms.Add(realm);
             Save();
             return realm;

@@ -32,6 +32,24 @@ public class Realm
     /// <summary>Generated on first use; preserved across re-imports.</summary>
     public SigningKey? SigningKey { get; set; }
 
+    /// <summary>Configured registration fields, or the default: optional first and last name.</summary>
+    public List<RegistrationField> Fields => RegistrationFields ??
+        [new() { Name = "firstName", Label = "First name" }, new() { Name = "lastName", Label = "Last name" }];
+
+    /// <summary>
+    /// Claims from registration fields that set <c>claim</c>, read from the user's attributes, like a Keycloak user-attribute
+    /// mapper with the default String type. The token endpoint (#7) adds these to ID token, access token and userinfo.
+    /// </summary>
+    public JsonObject AttributeClaims(User user)
+    {
+        var claims = new JsonObject();
+        foreach (var field in Fields)
+            if (field.Claim is { Length: > 0 } claim && !User.ReservedClaims.Contains(claim)
+                && user.Attributes.GetValueOrDefault(field.Name) is [var value, ..])
+                claims[claim] = value;
+        return claims;
+    }
+
     public User? FindUser(string username) =>
         Users.Find(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
 
@@ -110,8 +128,16 @@ public class User
     // 0factor extensions
     public string? AgentNotes { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
-    /// <summary>Arbitrary JSON merged into tokens and userinfo.</summary>
+    /// <summary>Arbitrary JSON merged into tokens and userinfo. Names in <see cref="ReservedClaims"/> are rejected.</summary>
     public JsonObject? Claims { get; set; }
+
+    /// <summary>Claims 0factor sets itself; roles go through role fields and audiences through audience mappers.</summary>
+    public static readonly HashSet<string> ReservedClaims = ["iss", "sub", "aud", "exp", "iat", "nbf", "jti", "auth_time", "azp", "typ",
+        "sid", "session_state", "nonce", "at_hash", "acr", "scope", "realm_access", "resource_access"];
+
+    /// <summary>The reserved names used in <paramref name="claims"/>, empty when none.</summary>
+    public static List<string> Reserved(JsonObject? claims) =>
+        claims is null ? [] : claims.Select(c => c.Key).Where(ReservedClaims.Contains).ToList();
 }
 
 public class SigningKey
@@ -140,4 +166,5 @@ public class RegistrationField
     ReadCommentHandling = JsonCommentHandling.Skip)]
 [JsonSerializable(typeof(StoreData))]
 [JsonSerializable(typeof(Realm))]
+[JsonSerializable(typeof(List<RegistrationField>))]
 public partial class StoreJsonContext : JsonSerializerContext;

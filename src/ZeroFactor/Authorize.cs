@@ -102,30 +102,44 @@ public static class Authorize
     {
         if (store.GetRealm(realm) is not { } r) return Error("Realm does not exist.", StatusCodes.Status404NotFound);
         var form = await context.Request.ReadFormAsync();
-        var issuer = Discovery.Issuer(context.Request, realm);
-        var key = RealmKey.For(store, r);
         var signed = form["auth"].ToString();
-        if (Jwt.Validate(key, signed, issuer) is not { } auth || (string?)auth["typ"] != "AuthRequest")
+        if (ReadAuth(context, store, r, signed) is not { } auth)
             return Error("Your login attempt timed out. Start again from the application.");
 
         var email = form["email"].ToString().Trim();
         if (email == "") return Login(context, r, signed, null, "Enter an email address.");
-        var user = r.Users.Find(u => string.Equals(u.Username, email, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase));
+        var user = FindByEmail(r, email);
         if (user is null)
-        {
-            if (!r.RegistrationAllowed) return Login(context, r, signed, email, "No user with that email.");
-            // ponytail: creates the user straight away; #6 replaces this with the registration page.
-            user = new User { Username = email.ToLowerInvariant(), Email = email.ToLowerInvariant() };
-            store.AddUser(r, user);
-        }
+            return r.RegistrationAllowed
+                ? Register.Page(context, r, signed, auth, email.ToLowerInvariant(), [], [])
+                : Login(context, r, signed, email, "No user with that email.");
         if (!user.Enabled) return Login(context, r, signed, email, "Account is disabled, contact your administrator.");
+        return SignIn(context, store, codes, r, auth, user);
+    }
 
+    internal static User? FindByEmail(Realm realm, string email) =>
+        realm.Users.Find(u => string.Equals(u.Username, email, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The pending authorization request carried by the login and registration forms; null when forged or expired.</summary>
+    internal static JsonObject? ReadAuth(HttpContext context, Store store, Realm realm, string signed) =>
+        Jwt.Validate(RealmKey.For(store, realm), signed, Discovery.Issuer(context.Request, realm.Name)) is { } auth
+            && (string?)auth["typ"] == "AuthRequest" ? auth : null;
+
+    /// <summary>Starts a new SSO session for <paramref name="user"/> and answers the pending authorization request.</summary>
+    internal static IResult SignIn(HttpContext context, Store store, AuthCodes codes, Realm realm, JsonObject auth, User user)
+    {
+        var issuer = Discovery.Issuer(context.Request, realm.Name);
         store.Update(_ => user.LastLoginAt = DateTimeOffset.UtcNow);
         var (sid, authTime) = (Guid.NewGuid().ToString(), Now);
-        SetSession(context, key, r, issuer, user.Id, sid, authTime);
-        return Complete(codes, r, issuer, auth, user, sid, authTime);
+        SetSession(context, RealmKey.For(store, realm), realm, issuer, user.Id, sid, authTime);
+        return Complete(codes, realm, issuer, auth, user, sid, authTime);
     }
+
+    /// <summary>The authorization endpoint URL that restarts <paramref name="auth"/> at the login page.</summary>
+    internal static string RestartUrl(HttpContext context, Realm realm, JsonObject auth) =>
+        $"{context.Request.PathBase}/realms/{realm.Name}/protocol/openid-connect/auth" + QueryString.Create(
+            carried.Where(n => auth[n] is not null).Select(n => new KeyValuePair<string, string?>(n, (string?)auth[n])));
 
     static IResult Complete(AuthCodes codes, Realm realm, string issuer, JsonObject auth, User user, string sid, long authTime)
     {
@@ -192,7 +206,7 @@ public static class Authorize
         return page;
     }
 
-    static IResult Error(string message, int statusCode = StatusCodes.Status400BadRequest)
+    internal static IResult Error(string message, int statusCode = StatusCodes.Status400BadRequest)
     {
         var page = Slices.ErrorPage.Create(new ErrorModel(message));
         page.StatusCode = statusCode;

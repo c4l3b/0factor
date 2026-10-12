@@ -32,10 +32,11 @@ public sealed class AuthorizeTests : IDisposable
         Directory.Delete(importDir, true);
     }
 
-    WebApplicationFactory<Program> Start()
+    WebApplicationFactory<Program> Start(string? registrationFields = null)
     {
+        File.WriteAllText(Path.Combine(importDir, "test.json"), """{ "realm": "test", "users": [{ "username": "alice@example.com", "email": "alice@example.com" }] }""");
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
-            .UseSetting("ZF_DATA_DIR", dataDir).UseSetting("ZF_IMPORT_DIR", importDir));
+            .UseSetting("ZF_DATA_DIR", dataDir).UseSetting("ZF_IMPORT_DIR", importDir).UseSetting("ZF_REGISTRATION_FIELDS", registrationFields));
         disposables.Add(factory);
         return factory;
     }
@@ -277,17 +278,137 @@ public sealed class AuthorizeTests : IDisposable
         Assert.True(listed.IndexOf("value=\"dave@example.com\"") < listed.IndexOf("value=\"carol@example.com\""));
     }
 
+    static Task<HttpResponseMessage> PostRegistration(HttpClient client, string realm, params (string Name, string Value)[] fields) =>
+        client.PostAsync($"/realms/{realm}/login-actions/registration",
+            new FormUrlEncodedContent(fields.Select(f => new KeyValuePair<string, string>(f.Name, f.Value))), Ct);
+
+    const string Shop = """
+        {
+          "realm": "shop",
+          "registrationAllowed": true,
+          "roles": { "realm": [{ "name": "admin" }] },
+          "registrationFields": [
+            { "name": "firstName", "label": "First name", "required": true },
+            { "name": "lastName", "label": "Last name", "required": true },
+            { "name": "phone", "label": "Phone", "type": "tel", "claim": "phone_number" },
+            { "name": "tenant", "label": "Tenant", "type": "select", "options": ["acme", "globex"], "claim": "tenant" }
+          ]
+        }
+        """;
+
     [Fact]
-    public async Task Empty_realm_shows_empty_state_and_new_email_signs_in()
+    public async Task Unknown_email_registers_with_configured_fields_roles_and_claims()
     {
+        File.WriteAllText(Path.Combine(importDir, "shop.json"), Shop);
         var factory = Start();
         var client = Browser(factory);
-        var html = await Html(await client.GetAsync(Auth("fresh", Request), Ct));
-        Assert.Contains("No users yet. Type any email to create one.", html);
 
-        var response = await Post(client, "fresh", Field(html, "auth"), "New@Example.com");
+        var login = await Html(await client.GetAsync(Auth("shop", Request + "&nonce=n1"), Ct));
+        Assert.Contains("No users yet. Type any email to create one.", login);
+        var registration = await Post(client, "shop", Field(login, "auth"), "New@Example.com");
+        Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
+        var html = await Html(registration);
+        Assert.Contains("<input id=\"email\" name=\"email\" type=\"email\" readonly value=\"new@example.com\"", html);
+        Assert.Contains("href=\"/realms/shop/protocol/openid-connect/auth?client_id=web&amp;redirect_uri=http%3A%2F%2Fapp.test%2Fcb&amp;response_type=code&amp;state=s1&amp;nonce=n1\"", html);
+        Assert.Contains("<label for=\"firstName\">First name (required)</label>", html);
+        Assert.Contains("<input id=\"phone\" name=\"phone\" type=\"tel\" data-testid=\"phone\">", html);
+        Assert.Contains("<option value=\"globex\">globex</option>", html);
+        Assert.Contains("<option value=\"admin\"></option>", html);
+        Assert.Contains("<input id=\"realmRoles\" name=\"realmRoles\"", html);
+        Assert.Contains("<input id=\"clientRoles\" name=\"clientRoles\"", html);
+        Assert.Contains("<textarea id=\"claims\" name=\"claims\"", html);
+        Assert.Contains("<textarea id=\"agentNotes\" name=\"agentNotes\" required=\"required\"", html);
+        Assert.Contains("Shown on the login page so agents can pick the right account later.", html);
+        Assert.True(html.IndexOf("id=\"tenant\"") < html.IndexOf("Roles and claims") && html.IndexOf("Roles and claims") < html.IndexOf("id=\"agentNotes\""));
+        Assert.Contains(">Create user and sign in</button>", html);
+        Assert.Null(factory.Services.GetRequiredService<Store>().GetRealm("shop")!.FindUser("new@example.com"));
+
+        var response = await PostRegistration(client, "shop", ("auth", Field(html, "auth")), ("email", "new@example.com"),
+            ("firstName", "Nina"), ("lastName", "New"), ("phone", "+1 555 0100"), ("tenant", "acme"),
+            ("realmRoles", "admin, auditor"), ("clientRoles", "store.api:orders.write, store.api:orders:read"),
+            ("claims", """{"tenant_id": "acme", "permissions": ["orders:read"], "org": {"id": 42}}"""),
+            ("agentNotes", "admin in tenant acme, used for billing tests"));
+        var query = Query(response);
+        Assert.Equal("s1", query["state"]);
+        Assert.StartsWith("ZF_SESSION=", response.Headers.GetValues("Set-Cookie").Single());
+
+        var realm = factory.Services.GetRequiredService<Store>().GetRealm("shop")!;
+        var user = realm.FindUser("new@example.com")!;
+        Assert.Equal(("new@example.com", "Nina", "New", true), (user.Email, user.FirstName, user.LastName, user.EmailVerified));
+        Assert.Equal(["admin", "auditor"], user.RealmRoles);
+        Assert.Equal(["orders.write", "orders:read"], user.ClientRoles["store.api"]);
+        Assert.Equal("""{"tenant_id":"acme","permissions":["orders:read"],"org":{"id":42}}""", user.Claims!.ToJsonString());
+        Assert.Equal("admin in tenant acme, used for billing tests", user.AgentNotes);
+        var mapped = realm.AttributeClaims(user);
+        Assert.Equal(("+1 555 0100", "acme", 2), ((string?)mapped["phone_number"], (string?)mapped["tenant"], mapped.Count));
+        Assert.Contains(realm.Roles.Realm, r => r.Name == "auditor");
+        Assert.Contains(realm.Roles.Client["store.api"], r => r.Name == "orders:read");
+        Assert.Equal(user.Id, factory.Services.GetRequiredService<AuthCodes>().Redeem(query["code"]!)!.UserId);
+
+        var listed = await Html(await client.GetAsync(Auth("shop", Request + "&prompt=login"), Ct));
+        Assert.Contains("value=\"new@example.com\"", listed);
+        Assert.Contains("admin in tenant acme, used for billing tests", listed);
+        Assert.Contains("Roles: admin, auditor, store.api:orders.write, store.api:orders:read", listed);
+    }
+
+    [Theory]
+    [InlineData("claims", "{\"tenant_id\": ", "Invalid JSON:")]
+    [InlineData("claims", "[1, 2]", "Claims must be a JSON object")]
+    [InlineData("claims", "{\"sub\": \"x\", \"realm_access\": {}}", "Reserved claim names can&#x27;t be set: sub, realm_access.")]
+    [InlineData("clientRoles", "orders.write", "is not a client:role pair")]
+    [InlineData("firstName", "", "Please specify this field.")]
+    [InlineData("agentNotes", "", "Please specify this field.")]
+    [InlineData("tenant", "initech", "Choose one of the options.")]
+    public async Task Invalid_registration_rerenders_with_values_and_persists_nothing(string field, string value, string message)
+    {
+        File.WriteAllText(Path.Combine(importDir, "shop.json"), Shop);
+        var factory = Start();
+        var client = Browser(factory);
+        var login = await Html(await client.GetAsync(Auth("shop", Request), Ct));
+        var auth = Field(await Html(await Post(client, "shop", Field(login, "auth"), "new@example.com")), "auth");
+
+        var fields = new Dictionary<string, string>
+        {
+            ["auth"] = auth, ["email"] = "new@example.com", ["firstName"] = "Nina", ["lastName"] = "New", ["tenant"] = "acme",
+            ["realmRoles"] = "brand-new-role", ["agentNotes"] = "notes kept", [field] = value,
+        };
+        var response = await PostRegistration(client, "shop", fields.Select(f => (f.Key, f.Value)).ToArray());
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var html = await Html(response);
+        Assert.Matches($"<p class=\"error\" id=\"{field}-error\" data-testid=\"{field}-error\">[^<]*{Regex.Escape(message)}", html);
+        Assert.Contains("value=\"brand-new-role\"", html);
+        if (field != "agentNotes") Assert.Contains(">notes kept</textarea>", html);
+        Assert.False(response.Headers.Contains("Set-Cookie"));
+
+        var realm = factory.Services.GetRequiredService<Store>().GetRealm("shop")!;
+        Assert.Empty(realm.Users);
+        Assert.DoesNotContain(realm.Roles.Realm, r => r.Name == "brand-new-role");
+        Assert.DoesNotContain("new@example.com", File.ReadAllText(Path.Combine(dataDir, "0factor.json")));
+    }
+
+    [Fact]
+    public async Task Auto_created_realm_uses_env_registration_fields_and_optional_notes_can_be_skipped()
+    {
+        var factory = Start("""[{ "name": "dept", "label": "Department", "type": "select", "options": ["sales", "ops"], "required": true, "claim": "dept" }]""");
+        var client = Browser(factory);
+        var login = await Html(await client.GetAsync(Auth("fresh", Request), Ct));
+        var html = await Html(await Post(client, "fresh", Field(login, "auth"), "x@example.com"));
+        Assert.Contains("<label for=\"dept\">Department (required)</label>", html);
+        Assert.DoesNotContain("firstName", html);
+
+        var store = factory.Services.GetRequiredService<Store>();
+        store.Update(_ => store.GetRealm("fresh")!.AgentNotesRequired = false);
+        var response = await PostRegistration(client, "fresh", ("auth", Field(html, "auth")), ("email", "x@example.com"), ("dept", "ops"));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.NotNull(factory.Services.GetRequiredService<Store>().GetRealm("fresh")!.FindUser("new@example.com"));
+        var user = store.GetRealm("fresh")!.FindUser("x@example.com")!;
+        Assert.Equal(["ops"], user.Attributes["dept"]);
+        Assert.Null(user.AgentNotes);
+
+        // Registering an email that now exists is rejected; a forged auth is rejected.
+        var again = await PostRegistration(client, "fresh", ("auth", Field(html, "auth")), ("email", "X@example.com"), ("dept", "ops"));
+        Assert.Contains("Email already exists.", await Html(again));
+        var forged = await PostRegistration(client, "fresh", ("auth", "nope"), ("email", "y@example.com"), ("dept", "ops"));
+        Assert.Contains("timed out", await Html(forged));
     }
 
     /// <summary>Routes the test browser to 0factor (localhost) or the client app (app.test).</summary>

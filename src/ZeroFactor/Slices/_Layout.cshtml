@@ -9,7 +9,11 @@
         body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
         h1 { font-size: 1.5rem; }
         label { display: block; margin-bottom: .25rem; }
-        input[type=email] { width: 100%; box-sizing: border-box; padding: .5rem; font: inherit; }
+        input:not([type=checkbox]), select, textarea { width: 100%; box-sizing: border-box; padding: .5rem; font: inherit; }
+        textarea { min-height: 4rem; }
+        .field { margin-bottom: 1rem; }
+        .help { color: #555; font-size: .875rem; margin: .25rem 0 0; }
+        fieldset { border: 1px solid #ccc; border-radius: 4px; margin: 0 0 1rem; }
         button { margin-top: .5rem; padding: .5rem 1rem; font: inherit; cursor: pointer; }
         .error { background: #fde8e8; border: 1px solid #e08b8b; padding: .5rem .75rem; border-radius: 4px; }
         .users { list-style: none; padding: 0; }

@@ -1,0 +1,101 @@
+@inherits RazorSlice<RegisterModel>
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="register-title">Create a user in @Model.Realm</h1>
+<p class="warn" data-testid="banner">0factor test identity provider. No passwords. No user has this email yet, so fill in the details below.</p>
+@if (Model.Errors.Count > 0)
+{
+    <p class="error" role="alert" id="error" data-testid="register-error">Fix the fields marked below.</p>
+}
+
+<form method="post" action="@Model.Action" id="register-form" data-testid="register-form">
+    <input type="hidden" name="auth" value="@Model.Auth">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" readonly value="@Model.Email" data-testid="email">
+    @{ Error("email"); }
+    <p><a href="@Model.LoginUrl" id="different-email" data-testid="different-email">Use a different email</a></p>
+
+    @foreach (var field in Model.Fields)
+    {
+        var value = Model.Values.GetValueOrDefault(field.Name);
+        var label = field.Label ?? field.Name;
+        <div class="field">
+        @if (field.Type == "checkbox")
+        {
+            <label for="@field.Name"><input id="@field.Name" name="@field.Name" type="checkbox" value="true" checked="@(value is { Length: > 0 })" required="@field.Required" data-testid="@field.Name"> @label@(field.Required ? " (required)" : "")</label>
+        }
+        else
+        {
+            <label for="@field.Name">@label@(field.Required ? " (required)" : "")</label>
+            @if (field.Type == "select")
+            {
+                <select id="@field.Name" name="@field.Name" required="@field.Required" data-testid="@field.Name">
+                    <option value="">Choose...</option>
+                    @foreach (var option in field.Options ?? [])
+                    {
+                        <option value="@option" selected="@(option == value)">@option</option>
+                    }
+                </select>
+            }
+            else if (field.Type == "textarea")
+            {
+                <textarea id="@field.Name" name="@field.Name" required="@field.Required" data-testid="@field.Name">@value</textarea>
+            }
+            else
+            {
+                <input id="@field.Name" name="@field.Name" type="@field.Type" value="@value" required="@field.Required" data-testid="@field.Name">
+            }
+        }
+        @{ Error(field.Name); }
+        </div>
+    }
+
+    <fieldset>
+        <legend>Roles and claims</legend>
+        <div class="field">
+            <label for="realmRoles">Realm roles (comma-separated)</label>
+            <input id="realmRoles" name="realmRoles" list="realm-role-list" value="@Model.Values.GetValueOrDefault("realmRoles")" data-testid="realmRoles">
+            <datalist id="realm-role-list">
+                @foreach (var role in Model.RealmRoles)
+                {
+                    <option value="@role"></option>
+                }
+            </datalist>
+            <p class="help">Unknown roles are created in the realm.</p>
+            @{ Error("realmRoles"); }
+        </div>
+        <div class="field">
+            <label for="clientRoles">Client roles (comma-separated client:role pairs)</label>
+            <input id="clientRoles" name="clientRoles" value="@Model.Values.GetValueOrDefault("clientRoles")" placeholder="store.api:orders.write" data-testid="clientRoles">
+            <p class="help">Emitted under resource_access.{client}.roles.</p>
+            @{ Error("clientRoles"); }
+        </div>
+        <div class="field">
+            <label for="claims">Extra claims (JSON object)</label>
+            <textarea id="claims" name="claims" placeholder='{"tenant_id": "acme", "permissions": ["orders:read"]}' data-testid="claims">@Model.Values.GetValueOrDefault("claims")</textarea>
+            <p class="help">Added to the ID token, access token and userinfo. Any JSON value type.</p>
+            @{ Error("claims"); }
+        </div>
+    </fieldset>
+
+    <div class="field">
+        <label for="agentNotes">Agent notes@(Model.AgentNotesRequired ? " (required)" : "")</label>
+        <textarea id="agentNotes" name="agentNotes" required="@Model.AgentNotesRequired" data-testid="agentNotes">@Model.Values.GetValueOrDefault("agentNotes")</textarea>
+        <p class="help" id="agentNotes-help">Who is this user and what is it for? Shown on the login page so agents can pick the right account later. Example: 'admin in tenant acme, used for billing tests'.</p>
+        @{ Error("agentNotes"); }
+    </div>
+
+    <button type="submit" id="register" data-testid="register">Create user and sign in</button>
+</form>
+
+@functions {
+    public LayoutModel LayoutModel => new($"Create a user in {Model.Realm}");
+
+    void Error(string name)
+    {
+        if (Model.Errors.GetValueOrDefault(name) is { } message)
+        {
+            <p class="error" id="@name-error" data-testid="@name-error">@message</p>
+        }
+    }
+}

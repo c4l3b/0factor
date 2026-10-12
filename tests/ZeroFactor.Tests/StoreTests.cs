@@ -138,4 +138,12 @@ public sealed class StoreTests : IDisposable
         Assert.Null(strict.GetRealm("unknown"));
         Assert.Null(strict.GetClient(strict.GetRealm("auto")!, "other"));
     }
+
+    [Fact]
+    public void Import_rejects_reserved_claim_names()
+    {
+        ImportFile("bad.json", """{ "realm": "bad", "users": [{ "username": "a@example.com", "claims": { "tenant": "x", "aud": "y" } }] }""");
+        var e = Assert.Throws<InvalidOperationException>(() => Store.Open(dataDir).Import(importDir));
+        Assert.Contains("user a@example.com sets reserved claims: aud.", e.Message);
+    }
 }
