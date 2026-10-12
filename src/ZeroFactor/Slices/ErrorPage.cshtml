@@ -1,0 +1,9 @@
+@inherits RazorSlice<ErrorModel>
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="error-title">We are sorry...</h1>
+<p class="error" role="alert" id="error" data-testid="error-message">@Model.Message</p>
+
+@functions {
+    public LayoutModel LayoutModel => new("Error");
+}

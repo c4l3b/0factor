@@ -127,6 +127,14 @@ public class Store
         }
     }
 
+    /// <summary>Adds a new user with a generated id and creation time, creating any roles it has.</summary>
+    public void AddUser(Realm realm, User user) => Update(_ =>
+    {
+        Initialize(user);
+        realm.EnsureRoles(user);
+        realm.Users.Add(user);
+    });
+
     /// <summary>Applies a change under the store lock and persists it.</summary>
     public void Update(Action<StoreData> change)
     {
