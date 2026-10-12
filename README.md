@@ -85,6 +85,9 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 - No keycloak-js login-status iframe. Set `checkLoginIframe: false`.
 - Revocation is a no-op, and refresh tokens still work after logout.
 - Logout has no confirmation page.
+- Refresh tokens are RS256 (Keycloak uses HS512) and stateless. Offline tokens expire after 30 days instead of never.
+- Token `scope` is the requested scopes plus `profile email`; client scopes aren't modeled. Default-role composites are fixed to Keycloak's defaults.
+- The `password` grant ignores the password.
 
 ## Roles and custom claims
 

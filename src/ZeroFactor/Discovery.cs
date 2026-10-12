@@ -93,5 +93,5 @@ public static class Discovery
     public static IResult Json(JsonNode json, int statusCode = StatusCodes.Status200OK) =>
         Results.Content(json.ToJsonString(relaxed), "application/json", statusCode: statusCode);
 
-    static JsonArray Array(params string[] values) => new([.. values.Select(v => (JsonNode)v)]);
+    internal static JsonArray Array(params string[] values) => new([.. values.Select(v => (JsonNode)v)]);
 }

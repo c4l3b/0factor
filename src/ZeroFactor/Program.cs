@@ -30,6 +30,7 @@ app.MapGet("/health", () => "Healthy");
 app.MapDiscovery();
 app.MapAuthorize();
 app.MapRegister();
+app.MapToken();
 
 app.Run();
 

@@ -1,8 +1,7 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
@@ -41,14 +40,14 @@ public sealed class AuthorizeTests : IDisposable
         return factory;
     }
 
-    static HttpClient Browser(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false });
+    internal static HttpClient Browser(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false });
 
-    static string Auth(string realm, string query) => $"/realms/{realm}/protocol/openid-connect/auth?{query}";
+    internal static string Auth(string realm, string query) => $"/realms/{realm}/protocol/openid-connect/auth?{query}";
 
-    static string Field(string html, string name) =>
+    internal static string Field(string html, string name) =>
         WebUtility.HtmlDecode(Regex.Match(html, $"name=\"{name}\" value=\"([^\"]*)\"").Groups[1].Value);
 
-    static async Task<string> Html(HttpResponseMessage response)
+    internal static async Task<string> Html(HttpResponseMessage response)
     {
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         var html = await response.Content.ReadAsStringAsync(Ct);
@@ -58,18 +57,18 @@ public sealed class AuthorizeTests : IDisposable
     }
 
     /// <summary>Opens the login page for <paramref name="query"/> and posts only an email.</summary>
-    static async Task<HttpResponseMessage> SignIn(HttpClient client, string query, string email, string realm = "test")
+    internal static async Task<HttpResponseMessage> SignIn(HttpClient client, string query, string email, string realm = "test")
     {
         var login = await client.GetAsync(Auth(realm, query), Ct);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         return await Post(client, realm, Field(await Html(login), "auth"), email);
     }
 
-    static Task<HttpResponseMessage> Post(HttpClient client, string realm, string auth, string email) =>
+    internal static Task<HttpResponseMessage> Post(HttpClient client, string realm, string auth, string email) =>
         client.PostAsync($"/realms/{realm}/login-actions/authenticate",
             new FormUrlEncodedContent([new("auth", auth), new("email", email)]), Ct);
 
-    static Dictionary<string, Microsoft.Extensions.Primitives.StringValues> Query(HttpResponseMessage response)
+    internal static Dictionary<string, Microsoft.Extensions.Primitives.StringValues> Query(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         return QueryHelpers.ParseQuery(response.Headers.Location!.Query);
@@ -99,13 +98,15 @@ public sealed class AuthorizeTests : IDisposable
                 o.ResponseType = "code";
                 o.RequireHttpsMetadata = false;
                 o.MapInboundClaims = false;
-                o.BackchannelHttpHandler = new TokenEndpointStub(zfHandler, zf.Services.GetRequiredService<AuthCodes>(),
-                    RealmKey.For(store, store.GetRealm("test")!));
+                o.BackchannelHttpHandler = zfHandler;
+                o.SaveTokens = true;
             });
         await using var app = builder.Build();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapGet("/me", (HttpContext c) => c.User.FindFirst("sub")!.Value).RequireAuthorization();
+        // Explicit return type, or the lambda binds as a RequestDelegate and the token is discarded.
+        app.MapGet("/access-token", Task<string?> (HttpContext c) => c.GetTokenAsync("access_token")).RequireAuthorization();
         await app.StartAsync(Ct);
 
         var browser = new HttpClient(new CookieContainerHandler { InnerHandler = new Router(zfHandler, app.GetTestServer().CreateHandler()) });
@@ -136,6 +137,12 @@ public sealed class AuthorizeTests : IDisposable
         var alice = store.GetRealm("test")!.FindUser("alice@example.com")!;
         Assert.Equal(alice.Id, me);
         Assert.NotNull(alice.LastLoginAt);
+
+        // Tokens came from the real token endpoint (code + PKCE, client_secret_post).
+        var access = TokenTests.Payload(await browser.GetStringAsync("https://app.test/access-token", Ct));
+        Assert.Equal(("web", "Bearer", alice.Id, "account"), ((string?)access["azp"], (string?)access["typ"], (string?)access["sub"], (string?)access["aud"]));
+        Assert.Equal("openid profile email", (string?)access["scope"]);
+        Assert.Equal(fields["session_state"], (string?)access["sid"]);
     }
 
     [Fact]
@@ -303,13 +310,13 @@ public sealed class AuthorizeTests : IDisposable
         var factory = Start();
         var client = Browser(factory);
 
-        var login = await Html(await client.GetAsync(Auth("shop", Request + "&nonce=n1"), Ct));
+        var login = await Html(await client.GetAsync(Auth("shop", Request + "&scope=openid&nonce=n1"), Ct));
         Assert.Contains("No users yet. Type any email to create one.", login);
         var registration = await Post(client, "shop", Field(login, "auth"), "New@Example.com");
         Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
         var html = await Html(registration);
         Assert.Contains("<input id=\"email\" name=\"email\" type=\"email\" readonly value=\"new@example.com\"", html);
-        Assert.Contains("href=\"/realms/shop/protocol/openid-connect/auth?client_id=web&amp;redirect_uri=http%3A%2F%2Fapp.test%2Fcb&amp;response_type=code&amp;state=s1&amp;nonce=n1\"", html);
+        Assert.Contains("href=\"/realms/shop/protocol/openid-connect/auth?client_id=web&amp;redirect_uri=http%3A%2F%2Fapp.test%2Fcb&amp;response_type=code&amp;scope=openid&amp;state=s1&amp;nonce=n1\"", html);
         Assert.Contains("<label for=\"firstName\">First name (required)</label>", html);
         Assert.Contains("<input id=\"phone\" name=\"phone\" type=\"tel\" data-testid=\"phone\">", html);
         Assert.Contains("<option value=\"globex\">globex</option>", html);
@@ -343,7 +350,23 @@ public sealed class AuthorizeTests : IDisposable
         Assert.Equal(("+1 555 0100", "acme", 2), ((string?)mapped["phone_number"], (string?)mapped["tenant"], mapped.Count));
         Assert.Contains(realm.Roles.Realm, r => r.Name == "auditor");
         Assert.Contains(realm.Roles.Client["store.api"], r => r.Name == "orders:read");
-        Assert.Equal(user.Id, factory.Services.GetRequiredService<AuthCodes>().Redeem(query["code"]!)!.UserId);
+
+        // Fields with a claim, roles and extra claims reach the tokens with their JSON types.
+        var tokens = await TokenTests.Exchange(client, "shop", ("grant_type", "authorization_code"), ("client_id", "web"),
+            ("code", query["code"]!), ("redirect_uri", "http://app.test/cb"));
+        foreach (var token in new[] { (string)tokens["access_token"]!, (string)tokens["id_token"]! })
+        {
+            var payload = TokenTests.Payload(token);
+            Assert.Equal(user.Id, (string?)payload["sub"]);
+            Assert.Equal(("+1 555 0100", "acme", "Nina New"), ((string?)payload["phone_number"], (string?)payload["tenant"], (string?)payload["name"]));
+            Assert.Equal("""{"tenant_id":"acme","permissions":["orders:read"],"org":{"id":42}}""",
+                new JsonObject { ["tenant_id"] = payload["tenant_id"]?.DeepClone(), ["permissions"] = payload["permissions"]?.DeepClone(), ["org"] = payload["org"]?.DeepClone() }.ToJsonString());
+        }
+        var access = TokenTests.Payload((string)tokens["access_token"]!);
+        Assert.Equal(["offline_access", "default-roles-shop", "admin", "auditor", "uma_authorization"], access["realm_access"]!["roles"]!.AsArray().Select(r => (string?)r));
+        Assert.Equal(["orders.write", "orders:read"], access["resource_access"]!["store.api"]!["roles"]!.AsArray().Select(r => (string?)r));
+        Assert.Equal(["store.api", "account"], access["aud"]!.AsArray().Select(a => (string?)a));
+        Assert.Equal("n1", (string?)TokenTests.Payload((string)tokens["id_token"]!)["nonce"]);
 
         var listed = await Html(await client.GetAsync(Auth("shop", Request + "&prompt=login"), Ct));
         Assert.Contains("value=\"new@example.com\"", listed);
@@ -416,31 +439,5 @@ public sealed class AuthorizeTests : IDisposable
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
             new HttpMessageInvoker(request.RequestUri!.Host == "app.test" ? app : zf, false).SendAsync(request, ct);
-    }
-
-    /// <summary>
-    /// Backchannel for the OIDC handler: discovery and JWKS come from 0factor; the token endpoint (#7) is stubbed by
-    /// redeeming the code and signing an ID token with the realm key.
-    /// </summary>
-    sealed class TokenEndpointStub(HttpMessageHandler zf, AuthCodes codes, RealmKey key) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            if (!request.RequestUri!.AbsolutePath.EndsWith("/token"))
-                return await new HttpMessageInvoker(zf, false).SendAsync(request, ct);
-
-            var form = QueryHelpers.ParseQuery(await request.Content!.ReadAsStringAsync(ct));
-            var code = codes.Redeem(form["code"]!)!;
-            Assert.Equal(code.RedirectUri, form["redirect_uri"]);
-            Assert.Equal(code.CodeChallenge, Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(form["code_verifier"]!))));
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var idToken = Jwt.Create(key, new JsonObject
-            {
-                ["iss"] = Issuer, ["sub"] = code.UserId, ["aud"] = code.ClientId, ["exp"] = now + 300, ["iat"] = now,
-                ["nonce"] = code.Nonce, ["auth_time"] = code.AuthTime, ["sid"] = code.Sid, ["typ"] = "ID",
-            });
-            var body = new JsonObject { ["access_token"] = "stub", ["token_type"] = "Bearer", ["expires_in"] = 300, ["id_token"] = idToken };
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
-        }
     }
 }
