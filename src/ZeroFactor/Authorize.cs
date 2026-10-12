@@ -48,6 +48,7 @@ public static class Authorize
     {
         app.MapMethods("/realms/{realm}/protocol/openid-connect/auth", ["GET", "POST"], Auth);
         app.MapPost("/realms/{realm}/login-actions/authenticate", Authenticate);
+        app.MapMethods("/realms/{realm}/protocol/openid-connect/logout", ["GET", "POST"], Logout);
     }
 
     static async Task<IResult> Auth(string realm, HttpContext context, Store store, AuthCodes codes)
@@ -116,6 +117,46 @@ public static class Authorize
         if (!user.Enabled) return Login(context, r, signed, email, "Account is disabled, contact your administrator.");
         return SignIn(context, store, codes, r, auth, user);
     }
+
+    /// <summary>
+    /// RP-initiated logout. Unlike Keycloak there is no confirmation page: the session cookie is cleared right away, then the
+    /// browser goes to <c>post_logout_redirect_uri</c> (with <c>state</c>) or sees "You are signed out."
+    /// </summary>
+    static async Task<IResult> Logout(string realm, HttpContext context, Store store)
+    {
+        var request = context.Request;
+        var form = request.HasFormContentType ? await request.ReadFormAsync() : null;
+        string? Get(string name) => (form is null ? request.Query[name] : form[name]).ToString() is { Length: > 0 } v ? v : null;
+
+        if (store.GetRealm(realm) is not { } r) return Error("Realm does not exist.", StatusCodes.Status404NotFound);
+        var clientId = Get("client_id");
+        // Keycloak accepts an expired id_token_hint: apps usually sign out long after the ID token expired.
+        if (Get("id_token_hint") is { } hint)
+        {
+            if (Jwt.Validate(RealmKey.For(store, r), hint, Discovery.Issuer(request, r.Name), allowExpired: true) is not { } idToken
+                || (string?)idToken["typ"] != "ID" || (clientId is not null && (string?)idToken["azp"] != clientId))
+                return Error("Invalid parameter: id_token_hint");
+            clientId = (string?)idToken["azp"];
+        }
+
+        var redirectUri = Get("post_logout_redirect_uri");
+        if (redirectUri is not null)
+        {
+            if (clientId is null) return Error("Missing parameters: id_token_hint");
+            if (store.GetClient(r, clientId) is not { } client || !(r.Lenient || PostLogoutRedirectUris(client).Any(u => Matches(u, redirectUri))))
+                return Error("Invalid redirect uri");
+        }
+
+        // ponytail: stateless sessions, so refresh tokens for this sid stay valid. Add an ended-sid set if a test needs them to fail.
+        context.Response.Cookies.Delete(SessionCookie, new CookieOptions { Path = CookiePath(context, r) });
+        if (redirectUri is null) return Slices.SignedOut.Create();
+        return Results.Redirect(Get("state") is { } state ? QueryHelpers.AddQueryString(redirectUri, "state", state) : redirectUri);
+    }
+
+    /// <summary>Client attribute <c>post.logout.redirect.uris</c>, <c>##</c>-separated; <c>+</c> means the client's redirect URIs.</summary>
+    static IEnumerable<string> PostLogoutRedirectUris(Client client) =>
+        (client.Attributes.GetValueOrDefault("post.logout.redirect.uris") ?? "").Split("##", StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(u => u == "+" ? client.RedirectUris : [u]);
 
     internal static User? FindByEmail(Realm realm, string email) =>
         realm.Users.Find(u => string.Equals(u.Username, email, StringComparison.OrdinalIgnoreCase)
@@ -190,12 +231,14 @@ public static class Authorize
         });
         context.Response.Cookies.Append(SessionCookie, token, new CookieOptions
         {
-            Path = $"{context.Request.PathBase}/realms/{realm.Name}/",
+            Path = CookiePath(context, realm),
             HttpOnly = true,
             SameSite = SameSiteMode.Lax,
             Secure = context.Request.IsHttps,
         });
     }
+
+    static string CookiePath(HttpContext context, Realm realm) => $"{context.Request.PathBase}/realms/{realm.Name}/";
 
     static IResult Login(HttpContext context, Realm realm, string auth, string? email, string? error)
     {

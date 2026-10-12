@@ -61,8 +61,11 @@ public static class Jwt
         return $"{signingInput}.{Base64Url.EncodeToString(signature)}";
     }
 
-    /// <summary>The payload when the signature is ours, <c>exp</c> is in the future and <c>iss</c> matches; otherwise null.</summary>
-    public static JsonObject? Validate(RealmKey key, string token, string issuer)
+    /// <summary>
+    /// The payload when the signature is ours, <c>iss</c> matches and (unless <paramref name="allowExpired"/>) <c>exp</c> is in
+    /// the future; otherwise null.
+    /// </summary>
+    public static JsonObject? Validate(RealmKey key, string token, string issuer, bool allowExpired = false)
     {
         var parts = token.Split('.');
         if (parts.Length != 3) return null;
@@ -77,7 +80,7 @@ public static class Jwt
             if (JsonNode.Parse(Base64Url.DecodeFromChars(parts[1])) is not JsonObject payload
                 || (string?)payload["iss"] != issuer
                 || payload["exp"] is not JsonValue exp
-                || exp.GetValue<long>() <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                || (!allowExpired && exp.GetValue<long>() <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
                 return null;
             return payload;
         }

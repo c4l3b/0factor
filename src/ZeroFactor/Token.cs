@@ -27,24 +27,8 @@ public static class Token
 
         if (Get("grant_type") is not { } grantType) return Error("invalid_request", "Missing form parameter: grant_type");
 
-        // client_secret_basic, else client_secret_post; public clients send client_id only. Lenient realms accept any secret.
-        var (clientId, secret) = (Get("client_id"), Get("client_secret"));
-        if (AuthenticationHeaderValue.TryParse(context.Request.Headers.Authorization, out var header)
-            && header.Scheme.Equals("Basic", StringComparison.OrdinalIgnoreCase) && header.Parameter is { } basic)
-        {
-            try
-            {
-                var pair = Encoding.UTF8.GetString(Convert.FromBase64String(basic));
-                if (pair.IndexOf(':') is var colon and > 0)
-                    (clientId, secret) = (Uri.UnescapeDataString(pair[..colon]), Uri.UnescapeDataString(pair[(colon + 1)..]));
-            }
-            catch (FormatException) { }
-        }
-        const string invalidCredentials = "Invalid client or Invalid client credentials";
-        if (clientId is null || store.GetClient(r, clientId) is not { } client)
-            return Error("invalid_client", invalidCredentials, StatusCodes.Status401Unauthorized);
-        if (!client.PublicClient && !r.Lenient && client.Secret != secret)
-            return Error("unauthorized_client", invalidCredentials, StatusCodes.Status401Unauthorized);
+        var (client, error) = AuthenticateClient(context.Request, form, store, r);
+        if (client is null) return error!;
 
         User? FindById(string? id) => r.Users.Find(u => u.Id == id);
 
@@ -116,6 +100,33 @@ public static class Token
             default:
                 return Error("unsupported_grant_type", "Unsupported grant_type");
         }
+    }
+
+    /// <summary>
+    /// The client from <c>client_secret_basic</c>, else <c>client_secret_post</c>; public clients send <c>client_id</c> only and
+    /// lenient realms accept any secret. Otherwise the token endpoint's 401. Shared by token, introspection and revocation.
+    /// </summary>
+    internal static (Client? Client, IResult? Error) AuthenticateClient(HttpRequest request, IFormCollection form, Store store, Realm realm)
+    {
+        string? Get(string name) => form[name].ToString() is { Length: > 0 } v ? v : null;
+        var (clientId, secret) = (Get("client_id"), Get("client_secret"));
+        if (AuthenticationHeaderValue.TryParse(request.Headers.Authorization, out var header)
+            && header.Scheme.Equals("Basic", StringComparison.OrdinalIgnoreCase) && header.Parameter is { } basic)
+        {
+            try
+            {
+                var pair = Encoding.UTF8.GetString(Convert.FromBase64String(basic));
+                if (pair.IndexOf(':') is var colon and > 0)
+                    (clientId, secret) = (Uri.UnescapeDataString(pair[..colon]), Uri.UnescapeDataString(pair[(colon + 1)..]));
+            }
+            catch (FormatException) { }
+        }
+        const string invalidCredentials = "Invalid client or Invalid client credentials";
+        if (clientId is null || store.GetClient(realm, clientId) is not { } client)
+            return (null, Error("invalid_client", invalidCredentials, StatusCodes.Status401Unauthorized));
+        if (!client.PublicClient && !realm.Lenient && client.Secret != secret)
+            return (null, Error("unauthorized_client", invalidCredentials, StatusCodes.Status401Unauthorized));
+        return (client, null);
     }
 
     /// <summary>Keycloak's token scope: <c>openid</c> when requested, the default <c>profile email</c>, then the rest requested.</summary>
@@ -253,7 +264,7 @@ public static class Token
     static string? Origin(string redirectUri) =>
         Uri.TryCreate(redirectUri.TrimEnd('*'), UriKind.Absolute, out var uri) ? uri.GetLeftPart(UriPartial.Authority) : null;
 
-    static IResult Error(string error, string description, int statusCode = StatusCodes.Status400BadRequest) =>
+    internal static IResult Error(string error, string description, int statusCode = StatusCodes.Status400BadRequest) =>
         Discovery.Json(new JsonObject { ["error"] = error, ["error_description"] = description }, statusCode);
 
     static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();

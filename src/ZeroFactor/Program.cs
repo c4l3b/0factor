@@ -31,6 +31,7 @@ app.MapDiscovery();
 app.MapAuthorize();
 app.MapRegister();
 app.MapToken();
+app.MapIntrospection();
 
 app.Run();
 

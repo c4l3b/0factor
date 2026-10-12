@@ -107,6 +107,8 @@ public sealed class AuthorizeTests : IDisposable
         app.MapGet("/me", (HttpContext c) => c.User.FindFirst("sub")!.Value).RequireAuthorization();
         // Explicit return type, or the lambda binds as a RequestDelegate and the token is discarded.
         app.MapGet("/access-token", Task<string?> (HttpContext c) => c.GetTokenAsync("access_token")).RequireAuthorization();
+        app.MapGet("/signout", () => Results.SignOut(new() { RedirectUri = "/signed-out" },
+            [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]));
         await app.StartAsync(Ct);
 
         var browser = new HttpClient(new CookieContainerHandler { InnerHandler = new Router(zfHandler, app.GetTestServer().CreateHandler()) });
@@ -143,6 +145,22 @@ public sealed class AuthorizeTests : IDisposable
         Assert.Equal(("web", "Bearer", alice.Id, "account"), ((string?)access["azp"], (string?)access["typ"], (string?)access["sub"], (string?)access["aud"]));
         Assert.Equal("openid profile email", (string?)access["scope"]);
         Assert.Equal(fields["session_state"], (string?)access["sid"]);
+
+        // SignOutAsync: RP-initiated logout with id_token_hint, back through signout-callback-oidc with state.
+        var signOut = await browser.GetAsync("https://app.test/signout", Ct);
+        var endSession = signOut.Headers.Location!;
+        Assert.StartsWith($"{Issuer}/protocol/openid-connect/logout?", endSession.ToString());
+        Assert.Contains("id_token_hint", QueryHelpers.ParseQuery(endSession.Query).Keys);
+        var back = await browser.GetAsync(endSession, Ct);
+        Assert.Equal(HttpStatusCode.Redirect, back.StatusCode);
+        Assert.StartsWith("https://app.test/signout-callback-oidc?state=", back.Headers.Location!.ToString());
+        var done = await browser.GetAsync(back.Headers.Location, Ct);
+        Assert.Equal("/signed-out", done.Headers.Location!.ToString());
+
+        // The SSO session is gone: the next authorize shows the login page.
+        var again = await browser.GetAsync("https://app.test/me", Ct);
+        Assert.StartsWith($"{Issuer}/protocol/openid-connect/auth?", again.Headers.Location!.ToString());
+        Assert.Contains("Sign in to test", await Html(await browser.GetAsync(again.Headers.Location, Ct)));
     }
 
     [Fact]

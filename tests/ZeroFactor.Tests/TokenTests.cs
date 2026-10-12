@@ -370,4 +370,179 @@ public sealed class TokenTests : IDisposable
         var service = await Exchange(zfClient, "shop", ("grant_type", "client_credentials"), ("client_id", "store.api"), ("client_secret", "api-secret"));
         Assert.Equal(HttpStatusCode.Unauthorized, await Call("/orders", service));
     }
+
+    /// <summary><paramref name="jwt"/> re-signed with the realm key after <paramref name="edit"/>, e.g. to make it expired.</summary>
+    static string Resign(WebApplicationFactory<Program> factory, string realm, string jwt, Action<JsonObject> edit)
+    {
+        var store = factory.Services.GetRequiredService<Store>();
+        var payload = Payload(jwt);
+        edit(payload);
+        return Jwt.Create(RealmKey.For(store, store.GetRealm(realm)!), payload);
+    }
+
+    static void Expire(JsonObject payload) => payload["exp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10;
+
+    [Fact]
+    public async Task Userinfo_returns_profile_and_custom_claims_and_rejects_bad_tokens()
+    {
+        var factory = Start();
+        var client = factory.CreateClient();
+        var store = factory.Services.GetRequiredService<Store>();
+
+        var shop = await Exchange(client, "shop", ("grant_type", "password"), ("client_id", "store.web"), ("client_secret", "web-secret"),
+            ("username", "alice@example.com"), ("scope", "openid"));
+        async Task<HttpResponseMessage> Get(string token)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/realms/shop/protocol/openid-connect/userinfo");
+            request.Headers.Authorization = new("Bearer", token);
+            return await client.SendAsync(request, Ct);
+        }
+        var response = await Get((string)shop["access_token"]!);
+        Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
+        var alice = store.GetRealm("shop")!.FindUser("alice@example.com")!;
+        // Exactly what Keycloak 26 returns for this fixture user.
+        Assert.Equal($$"""{"sub":"{{alice.Id}}","email_verified":true,"name":"Alice Admin","preferred_username":"alice@example.com","given_name":"Alice","family_name":"Admin","email":"alice@example.com"}""",
+            (await Body(response)).ToJsonString());
+
+        // Custom claims (#6, #7): registration-field claim and extra JSON claims, which override profile claims; reserved names skipped.
+        var testAlice = store.GetRealm("test")!.FindUser("alice@example.com")!;
+        store.Update(_ => testAlice.Claims!["sub"] = "hijacked");
+        var test = await Exchange(client, "test", ("grant_type", "password"), ("client_id", "web"), ("username", "alice@example.com"));
+        var form = await client.PostAsync("/realms/test/protocol/openid-connect/userinfo",
+            new FormUrlEncodedContent([new("access_token", (string)test["access_token"]!)]), Ct);
+        var claims = await Body(form);
+        Assert.Equal((testAlice.Id, "override@example.com", "ops", "Alice", "acme"), ((string?)claims["sub"], (string?)claims["email"],
+            (string?)claims["department"], (string?)claims["name"], (string?)claims["tenant_id"]));
+        Assert.Equal("""["orders:read","orders:write"]""", claims["permissions"]!.ToJsonString());
+        Assert.Equal("""{"id":42,"admin":true}""", claims["org"]!.ToJsonString());
+
+        const string invalid = "Bearer realm=\"shop\", error=\"invalid_token\", error_description=\"Token verification failed\"";
+        foreach (var bad in new[] { "garbage", (string)shop["id_token"]!, (string)shop["refresh_token"]!,
+            Resign(factory, "shop", (string)shop["access_token"]!, Expire) })
+        {
+            var rejected = await Get(bad);
+            Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+            Assert.Equal(invalid, rejected.Headers.WwwAuthenticate.ToString());
+        }
+        var missing = await client.GetAsync("/realms/shop/protocol/openid-connect/userinfo", Ct);
+        Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
+        Assert.Equal("Bearer realm=\"shop\"", missing.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async Task Introspection_requires_a_confidential_client_and_reports_only_valid_tokens_active()
+    {
+        var factory = Start();
+        var client = factory.CreateClient();
+        var tokens = await Exchange(client, "shop", ("grant_type", "password"), ("client_id", "store.web"), ("client_secret", "web-secret"),
+            ("username", "alice@example.com"), ("scope", "openid"));
+        async Task<HttpResponseMessage> Introspect(string token, string? hint = null, AuthenticationHeaderValue? auth = null)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/realms/shop/protocol/openid-connect/token/introspect")
+            {
+                Content = new FormUrlEncodedContent(hint is null ? [new("token", token)] : [new("token", token), new("token_type_hint", hint)]),
+            };
+            request.Headers.Authorization = auth ?? Basic("store.api", "api-secret");
+            return await client.SendAsync(request, Ct);
+        }
+
+        var access = (string)tokens["access_token"]!;
+        var active = await Body(await Introspect(access));
+        Assert.Equal([.. Payload(access).Select(p => p.Key), "client_id", "username", "token_type", "active"], active.Select(p => p.Key));
+        Assert.Equal(("store.web", "alice@example.com", "Bearer", true, "Alice Admin"), ((string?)active["client_id"], (string?)active["username"],
+            (string?)active["token_type"], (bool)active["active"]!, (string?)active["name"]));
+
+        var refresh = await Body(await Introspect((string)tokens["refresh_token"]!, "refresh_token"));
+        Assert.Equal(("Refresh", true), ((string?)refresh["token_type"], (bool)refresh["active"]!));
+
+        foreach (var (token, hint) in new[] { ("garbage", null), ((string)tokens["id_token"]!, null), ((string)tokens["refresh_token"]!, null),
+            (Resign(factory, "shop", access, Expire), (string?)null) })
+            Assert.Equal("""{"active":false}""", (await Body(await Introspect(token, hint))).ToJsonString());
+
+        async Task Fails(HttpResponseMessage response, HttpStatusCode status, string description)
+        {
+            Assert.Equal(status, response.StatusCode);
+            Assert.Equal($$"""{"error":"invalid_request","error_description":"{{description}}"}""", (await Body(response)).ToJsonString());
+        }
+        await Fails(await Introspect(access, auth: Basic("store.api", "wrong")), HttpStatusCode.Unauthorized, "Authentication failed.");
+        await Fails(await Introspect(access, auth: Basic("nope", "x")), HttpStatusCode.Unauthorized, "Authentication failed.");
+        await Fails(await client.PostAsync("/realms/shop/protocol/openid-connect/token/introspect",
+            new FormUrlEncodedContent([new("client_id", "store.spa"), new("token", access)]), Ct), HttpStatusCode.Forbidden, "Client not allowed.");
+        await Fails(await Introspect(""), HttpStatusCode.BadRequest, "Token not provided.");
+    }
+
+    [Fact]
+    public async Task Revocation_authenticates_the_client_and_is_a_no_op()
+    {
+        var factory = Start();
+        var client = factory.CreateClient();
+        var tokens = await Exchange(client, "test", ("grant_type", "password"), ("client_id", "web"), ("username", "alice@example.com"));
+        Task<HttpResponseMessage> Revoke(string realm, params (string Name, string Value)[] form) =>
+            client.PostAsync($"/realms/{realm}/protocol/openid-connect/revoke",
+                new FormUrlEncodedContent(form.Select(f => new KeyValuePair<string, string>(f.Name, f.Value))), Ct);
+
+        var revoked = await Revoke("test", ("client_id", "web"), ("token", (string)tokens["refresh_token"]!));
+        Assert.Equal(HttpStatusCode.OK, revoked.StatusCode);
+        Assert.Equal("", await revoked.Content.ReadAsStringAsync(Ct));
+        // Stateless: the revoked refresh token still works.
+        await Exchange(client, "test", ("grant_type", "refresh_token"), ("client_id", "web"), ("refresh_token", (string)tokens["refresh_token"]!));
+
+        var garbage = await Revoke("test", ("client_id", "web"), ("token", "garbage"));
+        Assert.Equal(HttpStatusCode.OK, garbage.StatusCode);
+        Assert.Equal("""{"error":"invalid_token","error_description":"Invalid token"}""", (await Body(garbage)).ToJsonString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await Revoke("test", ("client_id", "web"))).StatusCode);
+        var wrong = await Revoke("shop", ("client_id", "store.web"), ("client_secret", "wrong"), ("token", "garbage"));
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        Assert.Equal("unauthorized_client", (string?)(await Body(wrong))["error"]);
+    }
+
+    [Fact]
+    public async Task Logout_clears_the_session_and_checks_post_logout_redirect_uris_in_strict_realms()
+    {
+        var factory = Start();
+        var browser = Browser(factory);
+        const string Logout = "/realms/shop/protocol/openid-connect/logout";
+        const string Back = "https://localhost:7001/signin-oidc";
+
+        string code = Query(await SignIn(browser, WebSignIn, "alice@example.com", "shop"))["code"]!;
+        var tokens = await Exchange(factory.CreateClient(), "shop", ("grant_type", "authorization_code"), ("client_id", "store.web"),
+            ("client_secret", "web-secret"), ("code", code), ("redirect_uri", Back), ("code_verifier", Verifier));
+        Assert.Equal(HttpStatusCode.Redirect, (await browser.GetAsync(Auth("shop", WebSignIn), Ct)).StatusCode);
+
+        async Task ErrorPage(string query, string message)
+        {
+            var response = await browser.GetAsync($"{Logout}?{query}", Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains(message, await Html(response));
+        }
+        await ErrorPage($"post_logout_redirect_uri={Back}", "Missing parameters: id_token_hint");
+        await ErrorPage($"post_logout_redirect_uri=https://evil.test/&client_id=store.web", "Invalid redirect uri");
+        await ErrorPage("id_token_hint=garbage", "Invalid parameter: id_token_hint");
+        await ErrorPage($"id_token_hint={tokens["access_token"]}", "Invalid parameter: id_token_hint");
+        await ErrorPage($"id_token_hint={tokens["id_token"]}&client_id=store.spa", "Invalid parameter: id_token_hint");
+        // Errors leave the session alone.
+        Assert.Equal(HttpStatusCode.Redirect, (await browser.GetAsync(Auth("shop", WebSignIn), Ct)).StatusCode);
+
+        // "+" in post.logout.redirect.uris means the client's redirect URIs; an expired id_token_hint is fine, as in Keycloak.
+        var hint = Resign(factory, "shop", (string)tokens["id_token"]!, Expire);
+        var logout = await browser.GetAsync($"{Logout}?id_token_hint={hint}&post_logout_redirect_uri={Back}&state=s1", Ct);
+        Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
+        Assert.Equal($"{Back}?state=s1", logout.Headers.Location!.ToString());
+        var cleared = Assert.Single(logout.Headers.GetValues("Set-Cookie"));
+        Assert.StartsWith("ZF_SESSION=;", cleared);
+        Assert.Contains("path=/realms/shop/", cleared);
+
+        var login = await browser.GetAsync(Auth("shop", WebSignIn), Ct);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        Assert.Contains("Sign in to shop", await Html(login));
+
+        // No redirect URI: a plain page, no confirmation step. POST works the same.
+        var page = await browser.PostAsync(Logout, new FormUrlEncodedContent([new("client_id", "store.web")]), Ct);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Contains("You are signed out.", await Html(page));
+
+        // Lenient realms accept any post_logout_redirect_uri.
+        var lenient = await browser.GetAsync("/realms/test/protocol/openid-connect/logout?client_id=web&post_logout_redirect_uri=http://app.test/bye", Ct);
+        Assert.Equal("http://app.test/bye", lenient.Headers.Location!.ToString());
+    }
 }
