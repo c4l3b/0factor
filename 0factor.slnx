@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/ZeroFactor.Aspire.Hosting/ZeroFactor.Aspire.Hosting.csproj" />
     <Project Path="src/ZeroFactor/ZeroFactor.csproj" />
   </Folder>
   <Folder Name="/tests/">

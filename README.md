@@ -53,6 +53,8 @@ builder.Services.AddAuthentication()
     .AddKeycloakOpenIdConnect("keycloak", realm: "shop", options => { /* ... */ });
 ```
 
+`AddZeroFactor` mirrors `AddKeycloak`: endpoint `http` (target port 8080), image `ghcr.io/c4l3b/0factor` tagged with the package version, `/health` health check. `WithRealmImport` copies files to `/opt/keycloak/data/import`; `WithDataVolume` / `WithDataBindMount` mount `/data`. Use a stable `port`: browser cookies and the token issuer include it. There is no admin user, management port or OTLP export.
+
 ## Keycloak compatibility
 
 All endpoints live under `/realms/{realm}`, the same as Keycloak:

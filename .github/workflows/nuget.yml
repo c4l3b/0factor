@@ -1,0 +1,24 @@
+name: nuget
+
+# Same v* tag as the image (docker.yml), so ZeroFactor.Aspire.Hosting X.Y.Z defaults to ghcr.io/c4l3b/0factor:X.Y.Z.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # NuGet Trusted Publishing: GitHub OIDC token -> short-lived API key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet pack src/ZeroFactor.Aspire.Hosting -c Release -warnaserror -p:Version=${GITHUB_REF_NAME#v} -o out
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }} # nuget.org profile name; trust policy names this repo and nuget.yml
+      - run: dotnet nuget push out/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json

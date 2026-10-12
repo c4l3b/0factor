@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Release overrides with -p:Version from the v* tag; the image tag is read from it (ZeroFactorContainerImageTags). -->
+    <Version>0.1.0</Version>
+    <PackageId>ZeroFactor.Aspire.Hosting</PackageId>
+    <Description>Aspire hosting integration for 0factor, a mock OIDC provider for local development that swaps in for Keycloak with one line.</Description>
+    <PackageTags>aspire integration hosting keycloak oidc mock authentication</PackageTags>
+    <Authors>Caleb Bertsch</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/c4l3b/0factor</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/c4l3b/0factor</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting" Version="13.6.1" />
+    <AssemblyMetadata Include="ZeroFactorImageTag" Value="$(Version)" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>
