@@ -68,6 +68,20 @@ public static class Register
             }
         }
 
+        ReadRolesClaimsNotes(r, values, user, errors);
+
+        if (errors.Count > 0) return Page(context, r, signed, auth, email, values, errors);
+        store.AddUser(r, user);
+        return Authorize.SignIn(context, store, codes, r, auth, user);
+    }
+
+    /// <summary>
+    /// Reads the realm roles, client roles, extra claims and agent notes inputs shared by registration and the management
+    /// page into <paramref name="user"/>, replacing what it had. Problems go into <paramref name="errors"/> by input name.
+    /// </summary>
+    internal static void ReadRolesClaimsNotes(Realm realm, Dictionary<string, string> values, User user, Dictionary<string, string> errors)
+    {
+        user.ClientRoles = [];
         user.RealmRoles = List(values.GetValueOrDefault("realmRoles"));
         foreach (var pair in List(values.GetValueOrDefault("clientRoles")))
         {
@@ -82,6 +96,7 @@ public static class Register
             if (!roles.Contains(role)) roles.Add(role);
         }
 
+        user.Claims = null;
         if (values.GetValueOrDefault("claims") is { Length: > 0 } claims)
         {
             try
@@ -98,11 +113,7 @@ public static class Register
         }
 
         user.AgentNotes = values.GetValueOrDefault("agentNotes") is { Length: > 0 } notes ? notes : null;
-        if (user.AgentNotes is null && r.AgentNotesRequired) errors["agentNotes"] = Required;
-
-        if (errors.Count > 0) return Page(context, r, signed, auth, email, values, errors);
-        store.AddUser(r, user);
-        return Authorize.SignIn(context, store, codes, r, auth, user);
+        if (user.AgentNotes is null && realm.AgentNotesRequired) errors["agentNotes"] = Required;
     }
 
     static string? Invalid(RegistrationField field, string value) => field.Type switch

@@ -16,16 +16,11 @@ public class ScaffoldTests(WebApplicationFactory<Program> factory) : IClassFixtu
     }
 
     [Fact]
-    public async Task Hello_page_renders_through_layout()
+    public async Task Root_redirects_to_the_management_page()
     {
-        var response = await client.GetAsync("/", TestContext.Current.CancellationToken);
-        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var response = await factory.CreateClient(new() { AllowAutoRedirect = false }).GetAsync("/", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("<title>Hello · 0factor</title>", html);
-        Assert.Contains("data-testid=\"hello-title\"", html);
-        Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("type=\"password\"", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/_0factor/", response.Headers.Location?.OriginalString);
     }
 }

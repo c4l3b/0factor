@@ -107,6 +107,12 @@ public class Store
         if (user.CreatedTimestamp == 0) user.CreatedTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 
+    /// <summary>A snapshot of all realms, for the management page.</summary>
+    public List<Realm> Realms
+    {
+        get { lock (gate) return [.. data.Realms]; }
+    }
+
     /// <summary>The named realm; unknown realms are auto-created (registration allowed) unless strict.</summary>
     public Realm? GetRealm(string name)
     {

@@ -24,14 +24,13 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 var app = builder.Build();
 app.UseForwardedHeaders();
 
-// Explicit IResult: the request delegate generator cannot see types made by the RazorSlices generator.
-app.MapGet("/", IResult () => ZeroFactor.Slices.Hello.Create());
 app.MapGet("/health", () => "Healthy");
 app.MapDiscovery();
 app.MapAuthorize();
 app.MapRegister();
 app.MapToken();
 app.MapIntrospection();
+app.MapManage();
 
 app.Run();
 
