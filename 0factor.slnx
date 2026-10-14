@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Api/Api.csproj" />
+    <Project Path="samples/AppHost/AppHost.csproj" />
+    <Project Path="samples/Web/Web.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/ZeroFactor.Aspire.Hosting/ZeroFactor.Aspire.Hosting.csproj" />
+    <Project Path="src/ZeroFactor/ZeroFactor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ZeroFactor.Tests/ZeroFactor.Tests.csproj" />
+  </Folder>
+</Solution>

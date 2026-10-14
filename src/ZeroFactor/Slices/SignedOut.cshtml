@@ -1,0 +1,8 @@
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="signed-out-title">You are signed out.</h1>
+<p data-testid="signed-out-message">You can close this window.</p>
+
+@functions {
+    public LayoutModel LayoutModel => new("Signed out");
+}

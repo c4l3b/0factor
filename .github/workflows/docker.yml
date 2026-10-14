@@ -1,0 +1,54 @@
+name: docker
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+
+env:
+  IMAGE: ghcr.io/c4l3b/0factor
+
+jobs:
+  build:
+    # AOT doesn't cross-compile under QEMU, so each arch builds on a native runner.
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            baseline: 25666893 # uncompressed bytes, measured for #10
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            baseline: 24434920
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t 0factor .
+      - name: Size budget (fail if > 10% over baseline)
+        run: |
+          size=$(docker image inspect 0factor --format '{{.Size}}')
+          gz=$(docker save 0factor | gzip | wc -c)
+          echo "${{ matrix.arch }}: $size bytes uncompressed, $gz bytes gzipped (baseline ${{ matrix.baseline }})" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$size" -le $(( ${{ matrix.baseline }} * 110 / 100 ))
+      - name: Push per-arch tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag 0factor "$IMAGE:${GITHUB_REF_NAME#v}-${{ matrix.arch }}"
+          docker push "$IMAGE:${GITHUB_REF_NAME#v}-${{ matrix.arch }}"
+
+  manifest:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          v=${GITHUB_REF_NAME#v}
+          docker buildx imagetools create -t "$IMAGE:$v" -t "$IMAGE:latest" "$IMAGE:$v-amd64" "$IMAGE:$v-arm64"

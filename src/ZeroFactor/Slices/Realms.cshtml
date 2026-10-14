@@ -1,0 +1,29 @@
+@inherits RazorSlice<RealmsModel>
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="realms-title">0factor realms</h1>
+<p class="warn" data-testid="prod-warning">Mock OIDC provider for local development. Login is an email address only. Never use this in production.</p>
+@if (Model.Realms.Count == 0)
+{
+    <p data-testid="no-realms">No realms yet. Import a Keycloak realm export, or point a client at any <code>/realms/{name}</code> to create one.</p>
+}
+else
+{
+    <table id="realms" data-testid="realms">
+        <thead><tr><th>Realm</th><th>Users</th><th>Clients</th></tr></thead>
+        <tbody>
+        @foreach (var realm in Model.Realms)
+        {
+            <tr data-testid="realm-@realm.Name">
+                <td><a href="realms/@Uri.EscapeDataString(realm.Name)" id="realm-@realm.Name" data-testid="realm-link-@realm.Name">Manage @realm.Name</a></td>
+                <td data-testid="user-count">@realm.Users.Count</td>
+                <td data-testid="client-count">@realm.Clients.Count</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@functions {
+    public LayoutModel LayoutModel => new("Realms");
+}

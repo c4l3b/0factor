@@ -1,0 +1,102 @@
+@inherits RazorSlice<RealmModel>
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<p><a href="../" id="all-realms" data-testid="all-realms">All realms</a></p>
+<h1 data-testid="realm-title">Realm @Model.Realm.Name</h1>
+@if (Model.Message is not null)
+{
+    <p class="warn" role="status" id="message" data-testid="message">@Model.Message</p>
+}
+@if (Model.Errors.Count > 0)
+{
+    <p class="error" role="alert" id="error" data-testid="manage-error">Fix the fields marked below.</p>
+}
+
+<div class="field">
+    <label for="discovery-url">Discovery URL</label>
+    <input id="discovery-url" readonly value="@Model.DiscoveryUrl" data-testid="discovery-url">
+</div>
+
+<h2 id="users-title">Users</h2>
+<p class="help">Changes apply to tokens issued from now on, including refreshes; tokens already issued are unchanged. Users from realm import files are reset from the file when 0factor restarts.</p>
+@if (Model.Realm.Users.Count == 0)
+{
+    <p data-testid="no-users">No users yet.</p>
+}
+@foreach (var user in Model.Realm.Users)
+{
+    var key = user.Email ?? user.Username;
+    var values = user.Id == Model.EditedId ? Model.Values : Manage.Values(user);
+    var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(n => !string.IsNullOrEmpty(n)));
+    var action = $"{Model.Url}/users/{Uri.EscapeDataString(user.Id)}";
+    <section class="user" id="user-@key" data-testid="user-@key">
+        <h3>@key@(user.Enabled ? "" : " (disabled)")</h3>
+        <dl>
+            <dt>User ID</dt><dd data-testid="user-id">@user.Id</dd>
+            <dt>Name</dt><dd data-testid="user-name">@(name == "" ? "-" : name)</dd>
+            <dt>Attributes</dt><dd data-testid="user-attributes">@(user.Attributes.Count == 0 ? "-" : string.Join("; ", user.Attributes.Select(a => $"{a.Key}: {string.Join(", ", a.Value)}")))</dd>
+            <dt>Last login</dt><dd data-testid="user-last-login">@(user.LastLoginAt?.ToString("u") ?? "never")</dd>
+        </dl>
+        <form method="post" action="@action" id="edit-@key" data-testid="edit-@key">
+            <div class="field">
+                <label for="@key-realmRoles">Realm roles (comma-separated)</label>
+                <input id="@key-realmRoles" name="realmRoles" value="@values.GetValueOrDefault("realmRoles")" data-testid="@key-realmRoles">
+                @{ Error(user, "realmRoles"); }
+            </div>
+            <div class="field">
+                <label for="@key-clientRoles">Client roles (comma-separated client:role pairs)</label>
+                <input id="@key-clientRoles" name="clientRoles" value="@values.GetValueOrDefault("clientRoles")" placeholder="store.api:orders.write" data-testid="@key-clientRoles">
+                @{ Error(user, "clientRoles"); }
+            </div>
+            <div class="field">
+                <label for="@key-claims">Extra claims (JSON object)</label>
+                <textarea id="@key-claims" name="claims" placeholder='{"tenant_id": "acme"}' data-testid="@key-claims">@values.GetValueOrDefault("claims")</textarea>
+                @{ Error(user, "claims"); }
+            </div>
+            <div class="field">
+                <label for="@key-agentNotes">Agent notes@(Model.Realm.AgentNotesRequired ? " (required)" : "")</label>
+                <textarea id="@key-agentNotes" name="agentNotes" required="@Model.Realm.AgentNotesRequired" data-testid="@key-agentNotes">@values.GetValueOrDefault("agentNotes")</textarea>
+                @{ Error(user, "agentNotes"); }
+            </div>
+            <button type="submit" id="@key-save" data-testid="@key-save">Save</button>
+        </form>
+        <form method="post" action="@action/delete" id="delete-@key" data-testid="delete-@key">
+            <button type="submit" id="@key-delete" data-testid="@key-delete">Delete user @key</button>
+        </form>
+    </section>
+}
+
+<h2 id="clients-title">Clients</h2>
+@if (Model.Realm.Clients.Count == 0)
+{
+    <p data-testid="no-clients">No clients yet.@(Model.Realm.Lenient ? " Any client_id is accepted and recorded here on first use." : "")</p>
+}
+else
+{
+    <table id="clients" data-testid="clients">
+        <thead><tr><th>Client ID</th><th>Type</th><th>Redirect URIs</th></tr></thead>
+        <tbody>
+        @foreach (var client in Model.Realm.Clients)
+        {
+            <tr data-testid="client-@client.ClientId">
+                <td>@client.ClientId</td>
+                <td>@(client.PublicClient ? "public" : "confidential")</td>
+                <td>@(client.RedirectUris.Count == 0 ? "-" : string.Join(" ", client.RedirectUris))</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@functions {
+    public LayoutModel LayoutModel => new($"Realm {Model.Realm.Name}");
+
+    void Error(User user, string name)
+    {
+        if (user.Id == Model.EditedId && Model.Errors.GetValueOrDefault(name) is { } message)
+        {
+            var key = user.Email ?? user.Username;
+            <p class="error" id="@key-@name-error" data-testid="@key-@name-error">@message</p>
+        }
+    }
+}

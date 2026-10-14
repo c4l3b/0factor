@@ -1,0 +1,11 @@
+@page
+@attribute [Authorize(Roles = "admin")]
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Admin</title></head>
+<body>
+<h1 data-testid="admin-title">Admin</h1>
+<p>@User.Identity!.Name has the admin realm role.</p>
+<p><a href="/">Back</a></p>
+</body>
+</html>

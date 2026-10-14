@@ -1,0 +1,16 @@
+@inherits RazorSlice<FormPostModel>
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="form-post-title">Return to the application</h1>
+<p>Sign-in finished. Press Continue to send the result back to the application.</p>
+<form method="post" action="@Model.Action" id="form-post" data-testid="form-post">
+    @foreach (var (name, value) in Model.Values)
+    {
+        <input type="hidden" name="@name" value="@value">
+    }
+    <button type="submit" id="continue" data-testid="continue" autofocus>Continue</button>
+</form>
+
+@functions {
+    public LayoutModel LayoutModel => new("Return to the application");
+}

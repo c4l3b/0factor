@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build -warnaserror
+      - name: Build image for the end-to-end test
+        run: docker build -t 0factor:e2e .
+      - name: Test (end-to-end runs the samples/ AppHost against 0factor:e2e)
+        run: dotnet test --no-build
+        env:
+          ZF_E2E_IMAGE: 0factor:e2e
+      - name: Publish (Native AOT)
+        run: dotnet publish src/ZeroFactor -c Release -r linux-x64 -warnaserror -o out
+      - name: Binary size
+        run: ls -l out/ZeroFactor | tee -a "$GITHUB_STEP_SUMMARY"

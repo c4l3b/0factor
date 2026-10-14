@@ -1,0 +1,49 @@
+@inherits RazorSlice<LoginModel>
+@implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
+
+<h1 data-testid="login-title">Sign in to @Model.Realm</h1>
+<p class="warn" data-testid="banner">0factor test identity provider. No passwords. Pick a user below or type an email.</p>
+
+@if (Model.Error is not null)
+{
+    <p class="error" role="alert" id="error" data-testid="login-error">@Model.Error</p>
+}
+
+<form method="post" action="@Model.Action" id="login-form" data-testid="login-form">
+    <input type="hidden" name="auth" value="@Model.Auth">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autofocus value="@Model.Email" data-testid="email">
+    <button type="submit" id="continue" data-testid="continue">Continue</button>
+</form>
+
+<h2>Existing users</h2>
+@if (Model.Users.Count == 0)
+{
+    <p data-testid="no-users">No users yet. Type any email to create one.</p>
+}
+else
+{
+    <form method="post" action="@Model.Action" id="user-list" data-testid="user-list">
+        <input type="hidden" name="auth" value="@Model.Auth">
+        <ul class="users">
+        @foreach (var user in Model.Users)
+        {
+            var email = user.Email ?? user.Username;
+            var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(n => !string.IsNullOrEmpty(n)));
+            var roles = string.Join(", ", user.RealmRoles.Concat(user.ClientRoles.SelectMany(c => c.Value.Select(role => $"{c.Key}:{role}"))));
+            <li>
+                <button type="submit" name="email" value="@email" data-testid="user-@email">
+                    <span class="email">Sign in as @email@(user.Enabled ? "" : " (disabled)")</span>
+                    @if (name != "") { <span data-testid="user-name">@name</span> }
+                    @if (roles != "") { <span data-testid="user-roles">Roles: @roles</span> }
+                    @if (!string.IsNullOrEmpty(user.AgentNotes)) { <span class="notes" data-testid="user-notes">@user.AgentNotes</span> }
+                </button>
+            </li>
+        }
+        </ul>
+    </form>
+}
+
+@functions {
+    public LayoutModel LayoutModel => new($"Sign in to {Model.Realm}");
+}
