@@ -1,0 +1,30 @@
+@inherits RazorSlice
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Session status</title></head><body>
+<script>
+let init;
+let client;
+let origin;
+window.addEventListener("message", async event => {
+    if (typeof event.data !== "string" || event.data.split(" ").length !== 2) return;
+    const [clientId, sessionId] = event.data.split(" ");
+    let status = "error";
+    try {
+        if (!init) {
+            client = clientId;
+            origin = event.origin;
+            const url = new URL(location.pathname + "/init", location.origin);
+            url.searchParams.set("client_id", client);
+            url.searchParams.set("origin", origin);
+            init = fetch(url).then(response => response.ok);
+        }
+        if (await init && clientId === client && event.origin === origin) {
+            const cookie = document.cookie.split(";").map(c => c.trim()).find(c => c.startsWith("ZF_SESSION_STATUS="));
+            const current = cookie ? cookie.slice("ZF_SESSION_STATUS=".length) : "";
+            status = current === sessionId ? "unchanged" : "changed";
+        }
+    } catch { /* Denied storage or failed validation is a protocol error. */ }
+    event.source.postMessage(status, event.origin);
+});
+</script>
+</body></html>

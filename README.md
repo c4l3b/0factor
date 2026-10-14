@@ -247,6 +247,8 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 | Introspection | `/protocol/openid-connect/token/introspect` |
 | Revocation | `/protocol/openid-connect/revoke` |
 | Logout | `/protocol/openid-connect/logout` |
+| Session-status iframe | `/protocol/openid-connect/login-status-iframe.html` |
+| Third-party cookie probes | `/protocol/openid-connect/3p-cookies/step1.html` and `step2.html` |
 
 **Grants:**
 - `authorization_code`, with PKCE
@@ -261,18 +263,17 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 ### Known divergences from Keycloak
 
 - No admin REST API, SAML, identity brokering, back-channel logout, token exchange or device flow.
-- No keycloak-js login-status iframe. Set `checkLoginIframe: false`.
 - Revocation is a no-op, and refresh tokens (and userinfo with an unexpired access token) still work after logout.
 - Logout has no confirmation page: it signs out right away and shows "You are signed out." when there is no `post_logout_redirect_uri`.
 - Refresh tokens are RS256 (Keycloak uses HS512) and stateless. Offline tokens expire after 30 days instead of never.
 - Token `scope` is the requested scopes plus `profile email`; client scopes aren't modeled. Default-role composites are fixed to Keycloak's defaults.
 - The `password` grant ignores the password.
-- `response_mode=form_post` (the ASP.NET Core default) auto-submits using a small inline script. A visible **Continue** button works without JavaScript. Other pages use no JavaScript. A proxy CSP must allow this script (or users can use Continue).
+- `response_mode=form_post` (the ASP.NET Core default) auto-submits using a small inline script. A visible **Continue** button works without JavaScript. Login and registration use no JavaScript. Hidden session-status and cookie-probe iframes also require scripts. A proxy CSP must allow these scripts and embedding the iframes; `form_post` can fall back to Continue.
 
 ### Client compatibility
 
 - **ASP.NET Core OIDC and JwtBearer** (via `Aspire.Keycloak.Authentication`): tested end to end in CI against the [`samples/`](samples) app and the real container.
-- **keycloak-js:** needs `checkLoginIframe: false`. Untested.
+- **keycloak-js:** supports the default session-status iframe checks, including logout/account changes in other tabs. Browsers that block third-party cookies automatically disable these checks, as with Keycloak. Cross-site iframe cookies require HTTPS. Endpoint/cookie and script protocol tests cover this feature; a full browser adapter flow is not part of the automated suite. Refresh tokens still work after logout (see above).
 - **Others** (oidc-client-ts, Auth.js Keycloak provider): should work through discovery. Untested; tests welcome.
 
 ## Migrating from other mocks

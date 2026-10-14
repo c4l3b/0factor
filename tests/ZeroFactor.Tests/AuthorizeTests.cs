@@ -188,7 +188,7 @@ public sealed class AuthorizeTests : IDisposable
         Assert.Equal(["state", "session_state", "iss", "code"], query.Keys);
         Assert.Equal("s1", query["state"]);
         Assert.Equal(Issuer, query["iss"]);
-        var cookie = Assert.Single(first.Headers.GetValues("Set-Cookie"));
+        var cookie = Assert.Single(first.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION="));
         Assert.StartsWith("ZF_SESSION=", cookie);
         Assert.Contains("path=/realms/test/", cookie);
         Assert.Contains("httponly", cookie);
@@ -373,7 +373,7 @@ public sealed class AuthorizeTests : IDisposable
             ("agentNotes", "admin in tenant acme, used for billing tests"));
         var query = Query(response);
         Assert.Equal("s1", query["state"]);
-        Assert.StartsWith("ZF_SESSION=", response.Headers.GetValues("Set-Cookie").Single());
+        Assert.StartsWith("ZF_SESSION=", Assert.Single(response.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION=")));
 
         var realm = factory.Services.GetRequiredService<Store>().GetRealm("shop")!;
         var user = realm.FindUser("new@example.com")!;

@@ -1,0 +1,9 @@
+@inherits RazorSlice
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cookie support</title></head><body>
+<script>
+const supported = document.cookie.split(";").some(c => c.trim() === "ZF_COOKIE_PROBE=1");
+document.cookie = "ZF_COOKIE_PROBE=; Max-Age=0" + (location.protocol === "https:" ? "; SameSite=None; Secure" : "");
+parent.postMessage(supported ? "supported" : "unsupported", "*");
+</script>
+</body></html>

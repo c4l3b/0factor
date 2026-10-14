@@ -32,6 +32,7 @@ public static class Discovery
                 ["introspection_endpoint"] = oidc + "/token/introspect",
                 ["userinfo_endpoint"] = oidc + "/userinfo",
                 ["end_session_endpoint"] = oidc + "/logout",
+                ["check_session_iframe"] = oidc + "/login-status-iframe.html",
                 ["jwks_uri"] = oidc + "/certs",
                 ["revocation_endpoint"] = oidc + "/revoke",
                 ["grant_types_supported"] = Array("authorization_code", "refresh_token", "client_credentials", "password"),

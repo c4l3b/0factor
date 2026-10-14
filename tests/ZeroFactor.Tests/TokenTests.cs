@@ -551,7 +551,7 @@ public sealed class TokenTests : IDisposable
         var logout = await browser.GetAsync($"{Logout}?id_token_hint={hint}&post_logout_redirect_uri={Back}&state=s1", Ct);
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Equal($"{Back}?state=s1", logout.Headers.Location!.ToString());
-        var cleared = Assert.Single(logout.Headers.GetValues("Set-Cookie"));
+        var cleared = Assert.Single(logout.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION="));
         Assert.StartsWith("ZF_SESSION=;", cleared);
         Assert.Contains("path=/realms/shop/", cleared);
 
