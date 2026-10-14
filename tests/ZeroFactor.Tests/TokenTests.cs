@@ -254,10 +254,14 @@ public sealed class TokenTests : IDisposable
 
     const string Request = "client_id=web&redirect_uri=http://app.test/cb&response_type=code&state=s1";
 
-    [Fact]
-    public async Task Refresh_token_rotates_and_offline_access_outlives_the_session()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("http://localhost")]
+    public async Task Refresh_token_rotates_and_offline_access_outlives_the_session(string? issuerOverride)
     {
         var factory = Start();
+        factory = factory.WithWebHostBuilder(b => b.UseSetting("ZF_ISSUER", issuerOverride));
+        disposables.Add(factory);
         var client = factory.CreateClient();
         var store = factory.Services.GetRequiredService<Store>();
         (string, string)[] Refresh(string token, string clientId = "web") =>
@@ -270,6 +274,7 @@ public sealed class TokenTests : IDisposable
         Assert.Equal(((string?)first["session_state"], "openid profile email"), ((string?)second["session_state"], (string?)second["scope"]));
         Assert.NotNull(second["id_token"]);
         var refreshed = Payload((string)second["access_token"]!);
+        Assert.Equal(issuerOverride ?? "http://localhost/realms/test", (string?)refreshed["iss"]);
         Assert.Equal((string?)first["session_state"], (string?)refreshed["sid"]);
         Assert.Equal((long)Payload((string)first["access_token"]!)["auth_time"]!, (long)refreshed["auth_time"]!);
 
@@ -334,10 +339,14 @@ public sealed class TokenTests : IDisposable
         await Exchange(client, "test", ("grant_type", "client_credentials"), ("client_id", "anything"), ("client_secret", "any"));
     }
 
-    [Fact]
-    public async Task Keycloak_jwt_bearer_accepts_access_tokens_and_authorizes_by_realm_role()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("http://localhost")]
+    public async Task Keycloak_jwt_bearer_accepts_access_tokens_and_authorizes_by_realm_role(string? issuerOverride)
     {
         var zf = Start();
+        zf = zf.WithWebHostBuilder(b => b.UseSetting("ZF_ISSUER", issuerOverride));
+        disposables.Add(zf);
         var zfClient = zf.CreateClient();
 
         var builder = WebApplication.CreateSlimBuilder();
@@ -345,7 +354,12 @@ public sealed class TokenTests : IDisposable
         builder.Services.AddAuthorization();
         // Aspire resolves https+http://keycloak through service discovery; point it at the in-memory 0factor instead.
         // Registered first so it runs before JwtBearer's own post-configure builds the metadata manager.
-        builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o => (o.Authority, o.Backchannel) = (Shop, zfClient));
+        builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
+        {
+            o.Authority = issuerOverride ?? Shop;
+            o.MetadataAddress = Shop + "/.well-known/openid-configuration";
+            o.Backchannel = zfClient;
+        });
         builder.Services.AddAuthentication()
             .AddKeycloakJwtBearer("keycloak", "shop", o =>
             {

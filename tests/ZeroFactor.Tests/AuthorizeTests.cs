@@ -88,10 +88,16 @@ public sealed class AuthorizeTests : IDisposable
         return QueryHelpers.ParseQuery(response.Headers.Location!.Query);
     }
 
-    [Fact]
-    public async Task Oidc_handler_completes_login_by_posting_only_an_email()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("http://localhost")]
+    [InlineData("http://localhost/legacy/")]
+    public async Task Oidc_handler_completes_login_by_posting_only_an_email(string? issuerOverride)
     {
         var zf = Start();
+        zf = zf.WithWebHostBuilder(b => b.UseSetting("ZF_ISSUER", issuerOverride));
+        disposables.Add(zf);
+        var expectedIssuer = issuerOverride ?? Issuer;
         var zfHandler = zf.Server.CreateHandler();
         var store = zf.Services.GetRequiredService<Store>();
 
@@ -106,7 +112,8 @@ public sealed class AuthorizeTests : IDisposable
             .AddCookie()
             .AddOpenIdConnect(o =>
             {
-                o.Authority = Issuer;
+                o.Authority = expectedIssuer;
+                o.MetadataAddress = Issuer + "/.well-known/openid-configuration";
                 o.ClientId = "web";
                 o.ClientSecret = "secret";
                 o.ResponseType = "code";
@@ -139,7 +146,7 @@ public sealed class AuthorizeTests : IDisposable
         var html = await Html(formPost);
         var fields = Regex.Matches(html, "name=\"([^\"]+)\" value=\"([^\"]*)\"")
             .ToDictionary(m => m.Groups[1].Value, m => WebUtility.HtmlDecode(m.Groups[2].Value));
-        Assert.Equal(Issuer, fields["iss"]);
+        Assert.Equal(expectedIssuer, fields["iss"]);
         Assert.Contains("session_state", fields.Keys);
         Assert.Contains("state", fields.Keys);
         var action = WebUtility.HtmlDecode(Regex.Match(html, "action=\"([^\"]+)\"").Groups[1].Value);
@@ -156,6 +163,7 @@ public sealed class AuthorizeTests : IDisposable
 
         // Tokens came from the real token endpoint (code + PKCE, client_secret_post).
         var access = TokenTests.Payload(await browser.GetStringAsync("https://app.test/access-token", Ct));
+        Assert.Equal(expectedIssuer, (string?)access["iss"]);
         Assert.Equal(("web", "Bearer", alice.Id, "account"), ((string?)access["azp"], (string?)access["typ"], (string?)access["sub"], (string?)access["aud"]));
         Assert.Equal("openid profile email", (string?)access["scope"]);
         Assert.Equal(fields["session_state"], (string?)access["sid"]);
@@ -261,6 +269,32 @@ public sealed class AuthorizeTests : IDisposable
 
         var unknownRealm = await client.GetAsync(Auth("nope", Request), Ct);
         Assert.Equal(HttpStatusCode.OK, unknownRealm.StatusCode); // lenient: auto-created
+    }
+
+    [Theory]
+    [InlineData(null, null, "{\"name\":\"Local Admin\"}", "Local Admin")]
+    [InlineData(null, null, "{\"given_name\":\"Local\"}", "Local")]
+    [InlineData(null, null, "{\"name\":\"\",\"given_name\":\"Local\"}", "Local")]
+    [InlineData(null, null, "{\"name\":[\"Admin\"],\"given_name\":\"Local\"}", "Local")]
+    [InlineData("Carol", "Doe", "{\"name\":\"Local Admin\"}", "Carol Doe")]
+    public async Task Login_card_shows_name_and_is_a_native_submit_button(string? first, string? last, string claims, string expected)
+    {
+        var factory = Start();
+        var store = factory.Services.GetRequiredService<Store>();
+        store.Update(_ =>
+        {
+            var user = store.GetRealm("test")!.Users[0];
+            user.FirstName = first;
+            user.LastName = last;
+            user.Claims = JsonNode.Parse(claims)!.AsObject();
+        });
+        var client = Browser(factory);
+        var html = await Html(await client.GetAsync(Auth("test", Request), Ct));
+        var card = Regex.Match(html, "<button type=\"submit\" name=\"email\" value=\"alice@example.com\"[^>]*>([\\s\\S]*?)</button>");
+        Assert.True(card.Success);
+        Assert.Contains($"<span data-testid=\"user-name\">{expected}</span>", card.Value);
+        Assert.Contains("Sign in as alice@example.com", card.Value);
+        Assert.Equal(HttpStatusCode.Redirect, (await Post(client, "test", Field(html, "auth"), "alice@example.com")).StatusCode);
     }
 
     [Fact]

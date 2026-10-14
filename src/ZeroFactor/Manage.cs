@@ -84,7 +84,7 @@ public static class Manage
     static IResult Page(HttpContext context, Realm realm, string? message, string? editedId, Dictionary<string, string> values,
         Dictionary<string, string> errors)
     {
-        var page = Slices.RealmPage.Create(new RealmModel(realm, Url(context, realm), Discovery.Issuer(context.Request, realm.Name) + "/.well-known/openid-configuration",
+        var page = Slices.RealmPage.Create(new RealmModel(realm, Url(context, realm), Discovery.RealmUrl(context.Request, realm.Name) + "/.well-known/openid-configuration",
             message, editedId, values, errors));
         if (errors.Count > 0) page.StatusCode = StatusCodes.Status400BadRequest;
         return page;

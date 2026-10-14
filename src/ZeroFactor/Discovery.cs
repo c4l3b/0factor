@@ -9,8 +9,15 @@ namespace ZeroFactor;
 /// <summary>Keycloak's discovery, JWKS and realm-info endpoints.</summary>
 public static class Discovery
 {
-    /// <summary><c>{base}/realms/{realm}</c>. Base is <c>ZF_HOSTNAME</c> when set, else the (forwarded) request URL.</summary>
+    /// <summary>Exact <c>ZF_ISSUER</c> override, otherwise the realm's public URL.</summary>
     public static string Issuer(HttpRequest request, string realm)
+    {
+        var issuer = request.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["ZF_ISSUER"];
+        return string.IsNullOrEmpty(issuer) ? RealmUrl(request, realm) : issuer;
+    }
+
+    /// <summary><c>{base}/realms/{realm}</c>. Base is <c>ZF_HOSTNAME</c> when set, else the (forwarded) request URL.</summary>
+    public static string RealmUrl(HttpRequest request, string realm)
     {
         var hostname = request.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["ZF_HOSTNAME"];
         var baseUrl = string.IsNullOrEmpty(hostname) ? $"{request.Scheme}://{request.Host}{request.PathBase}" : hostname.TrimEnd('/');
@@ -23,7 +30,7 @@ public static class Discovery
         {
             if (store.GetRealm(realm) is null) return RealmNotFound();
             var issuer = Issuer(request, realm);
-            var oidc = issuer + "/protocol/openid-connect";
+            var oidc = RealmUrl(request, realm) + "/protocol/openid-connect";
             return Json(new JsonObject
             {
                 ["issuer"] = issuer,
@@ -74,13 +81,13 @@ public static class Discovery
         app.MapGet("/realms/{realm}", (string realm, HttpRequest request, Store store) =>
         {
             if (store.GetRealm(realm) is not { } r) return RealmNotFound();
-            var issuer = Issuer(request, realm);
+            var realmUrl = RealmUrl(request, realm);
             return Json(new JsonObject
             {
                 ["realm"] = realm,
                 ["public_key"] = Convert.ToBase64String(RealmKey.For(store, r).Rsa.ExportSubjectPublicKeyInfo()),
-                ["token-service"] = issuer + "/protocol/openid-connect",
-                ["account-service"] = issuer + "/account",
+                ["token-service"] = realmUrl + "/protocol/openid-connect",
+                ["account-service"] = realmUrl + "/account",
                 ["tokens-not-before"] = 0,
             });
         });

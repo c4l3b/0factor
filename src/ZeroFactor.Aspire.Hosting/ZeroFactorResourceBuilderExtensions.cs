@@ -90,8 +90,14 @@ public static class ZeroFactorResourceBuilderExtensions
                 ($"/realms/{escapedRealm}/.well-known/openid-configuration", $"{realm} discovery")
             ];
             foreach (var (path, label) in links)
-                if (!context.Urls.Any(u => u.Url == endpoint.Url + path))
+            {
+                var existing = context.Urls.FirstOrDefault(u => u.Url == endpoint.Url + path
+                    || (u.Url == path && u.Endpoint?.EndpointName == endpoint.EndpointName));
+                if (existing is null)
                     context.Urls.Add(new() { Url = endpoint.Url + path, DisplayText = label, Endpoint = endpoint });
+                else if (string.IsNullOrWhiteSpace(existing.DisplayText))
+                    existing.DisplayText = label;
+            }
         });
         return builder.WithReference(oidc).WithEnvironment($"ConnectionStrings__{oidc.Resource.Name}", issuer);
     }

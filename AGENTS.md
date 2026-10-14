@@ -79,5 +79,6 @@ docker run --rm -p 8080:8080 0factor
 | `ZF_DATA_DIR` | `/data` | Folder holding `0factor.json` |
 | `ZF_IMPORT_DIR` | `/opt/keycloak/data/import` | Keycloak realm-export JSON files loaded at startup |
 | `ZF_HOSTNAME` | *(from request)* | Fixed base URL for the issuer, like Keycloak's `KC_HOSTNAME` |
+| `ZF_ISSUER` | *(unset)* | Exact issuer override; realm endpoint URLs still use `ZF_HOSTNAME` or the request |
 | `ZF_STRICT` | `false` | `true` disables auto-creating unknown realms and clients |
 | `ZF_REGISTRATION_FIELDS` | *(unset)* | JSON array of registration fields for auto-created realms |

@@ -48,13 +48,17 @@ public class AspireHostingTests
         Assert.True(endpoint.IsProxied);
     }
 
-    [Fact]
-    public async Task Issuer_and_environment_use_the_allocated_host_port()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Issuer_and_environment_use_the_allocated_host_port(bool existingDiscoveryLink)
     {
         var builder = DistributedApplication.CreateBuilder();
         var oidc = builder.AddZeroFactor("keycloak");
         var endpoint = oidc.Resource.Annotations.OfType<EndpointAnnotation>().Single();
         endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "localhost", 12345);
+        if (existingDiscoveryLink)
+            oidc.WithUrlForEndpoint("http", _ => new() { Url = "/realms/shop/.well-known/openid-configuration" });
         var consumer = builder.AddExecutable("consumer", "unused", ".").WithReference(oidc, realm: "shop");
 
         Assert.Equal("http://localhost:12345/realms/shop", await oidc.GetIssuer("shop").GetValueAsync(TestContext.Current.CancellationToken));
@@ -70,7 +74,8 @@ public class AspireHostingTests
             await callback.Callback(context);
         Assert.Contains(urls, u => u.Url.EndsWith("/_0factor/") && u.DisplayText == "Users");
         Assert.Single(urls, u => u.Url.EndsWith("/_0factor/realms/shop"));
-        Assert.Contains(urls, u => u.Url.EndsWith("/realms/shop/.well-known/openid-configuration"));
+        var discovery = Assert.Single(urls, u => u.Url.EndsWith("/realms/shop/.well-known/openid-configuration"));
+        Assert.Equal("shop discovery", discovery.DisplayText);
     }
 
     static async Task<Dictionary<string, string?>> Environment(IResource resource, IDistributedApplicationBuilder builder)

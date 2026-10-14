@@ -216,7 +216,8 @@ These fields are ignored by real Keycloak:
 |---|---|---|
 | `ZF_DATA_DIR` | `/data` | Folder holding `0factor.json`. Delete the file to reset. |
 | `ZF_IMPORT_DIR` | `/opt/keycloak/data/import` | Realm-export JSON loaded at startup |
-| `ZF_HOSTNAME` | *(from request)* | Fixed base URL for the issuer, like `KC_HOSTNAME` |
+| `ZF_HOSTNAME` | *(from request)* | Fixed public base URL for realm endpoints and the default issuer, like `KC_HOSTNAME` |
+| `ZF_ISSUER` | *(unset)* | Exact issuer override for discovery and signed tokens; endpoint URLs still use `ZF_HOSTNAME` or the request |
 | `ZF_STRICT` | `false` | Disable auto-created realms and clients |
 | `ZF_REGISTRATION_FIELDS` | *(unset)* | JSON array of registration fields for auto-created realms |
 
@@ -262,6 +263,8 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 
 ### Known divergences from Keycloak
 
+- Optional `ZF_ISSUER` overrides the issuer independently of realm endpoint URLs, for migration from other mocks.
+
 - No admin REST API, SAML, identity brokering, back-channel logout, token exchange or device flow.
 - Revocation is a no-op, and refresh tokens (and userinfo with an unexpired access token) still work after logout.
 - Logout has no confirmation page: it signs out right away and shows "You are signed out." when there is no `post_logout_redirect_uri`.
@@ -278,9 +281,28 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 
 ## Migrating from other mocks
 
-Applications commonly identify users by **both `(iss, sub)`**. Copying a user ID preserves `sub`, but switching from a root issuer such as `http://localhost:8080` to `http://localhost:8080/realms/shop` changes `iss`. Plan an explicit migration of your application's development identity records, with a backup, before switching providers. Update authorities, token URLs and audiences, and clear old sign-in cookies and cached tokens. Keep issuer validation enabled.
+Applications commonly identify users by **both `(iss, sub)`**. Preserve the user IDs in your realm import and set `ZF_ISSUER` to the exact old issuer to keep those development identities, including any trailing slash. For example, when replacing a root-issuer mock:
 
-`ZF_HOSTNAME` fixes the base URL; it still appends `/realms/{realm}`. 0factor currently has no root realm or `ZF_ISSUER` override. A stable port prevents future issuer changes from random host ports.
+```csharp
+// AppHost
+var keycloak = builder.AddZeroFactor("keycloak", port: 8080)
+    .WithEnvironment("ZF_ISSUER", "http://localhost:8080")
+    .WithRealmImport("./Realms");
+
+// Consuming app: keep issuer validation enabled; fetch metadata from the realm.
+builder.Services.AddAuthentication().AddOpenIdConnect(options =>
+{
+    options.Authority = "http://localhost:8080";
+    options.MetadataAddress = "http://localhost:8080/realms/shop/.well-known/openid-configuration";
+    options.RequireHttpsMetadata = false; // local development over HTTP
+    options.ClientId = "web";
+    options.ResponseType = "code";
+});
+```
+
+For Docker, use `-e ZF_ISSUER=http://localhost:8080`. The override applies to every realm; use it with a single realm when preserving identities from another mock. Discovery stays at `/realms/{realm}/.well-known/openid-configuration` and advertises the working realm endpoints. Configure a separate metadata address in OIDC and JWT bearer clients rather than deriving it from the old authority. Aspire's `GetIssuer` and realm-aware `WithReference` return the realm URL; configure the old authority explicitly when using this override.
+
+`ZF_HOSTNAME` fixes the public endpoint base URL; without `ZF_ISSUER`, the issuer is that base plus `/realms/{realm}`. A stable port prevents future issuer changes from random host ports. If you choose to change the issuer instead, migrate your application's development identity records with a backup. Update token URLs and audiences as needed, and clear old sign-in cookies and cached tokens when switching providers.
 
 ### Soluto oidc-server-mock field mapping
 
