@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Build hosting integration against its minimum Aspire dependency
+        run: dotnet build src/ZeroFactor.Aspire.Hosting -warnaserror
       - run: dotnet build -warnaserror
       - name: Build image for the end-to-end test
         run: docker build -t 0factor:e2e .

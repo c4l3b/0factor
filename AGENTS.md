@@ -25,7 +25,7 @@ These follow from decisions in #1. Don't change them without updating #1 first.
 - **UI = RazorSlices.** Server-rendered, plain HTML forms, inline CSS.
 - **Agent-friendly pages.** Every page must follow these rules; tests enforce them:
   - No `<input type="password">` anywhere. Agents refuse to fill password fields, which is the reason this project exists.
-  - No JavaScript, no CAPTCHA, no consent or confirmation screens.
+  - No JavaScript except the `form_post` auto-submit script, which must retain a working Continue button without JavaScript. No CAPTCHA, no consent or confirmation screens.
   - Real `<label>` elements, visible text on every action, stable `id`/`name`/`data-testid` attributes.
   - Every flow works with plain `curl` form POSTs.
 - **Keycloak parity.** Use Keycloak's paths, parameter names, JSON property names, error codes and error messages. When unsure how Keycloak behaves, check Keycloak 26 behavior or docs rather than guessing. Deliberate divergences go in the README's divergences list.

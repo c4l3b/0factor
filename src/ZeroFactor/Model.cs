@@ -27,8 +27,13 @@ public class Realm
     // 0factor extensions
     public List<RegistrationField>? RegistrationFields { get; set; }
     public bool AgentNotesRequired { get; set; }
-    /// <summary>No imported clients: any client_id, redirect URI and secret is accepted. Derived on import.</summary>
-    public bool Lenient { get; set; }
+    bool? lenient;
+    /// <summary>Accept any client, redirect URI and secret. Defaults to true when no clients are imported.</summary>
+    public bool Lenient
+    {
+        get { lenient ??= Clients.Count == 0; return lenient.Value; }
+        set => lenient = value;
+    }
     /// <summary>Generated on first use; preserved across re-imports.</summary>
     public SigningKey? SigningKey { get; set; }
 
@@ -97,6 +102,8 @@ public class Client
     public Dictionary<string, string> Attributes { get; set; } = [];
     /// <summary>Only <c>oidc-audience-mapper</c> is honored.</summary>
     public List<ProtocolMapper> ProtocolMappers { get; set; } = [];
+    /// <summary>0factor shorthand for access-token audience mappers.</summary>
+    public List<string> Audience { get; set; } = [];
 }
 
 public class ProtocolMapper

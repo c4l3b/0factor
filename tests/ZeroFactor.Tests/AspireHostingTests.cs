@@ -16,6 +16,7 @@ public class AspireHostingTests
         Assert.Equal("http", endpoint.Name);
         Assert.Equal("http", endpoint.UriScheme);
         Assert.Equal(8080, endpoint.Port);
+        Assert.False(endpoint.IsProxied);
         Assert.Equal(8080, endpoint.TargetPort);
 
         var image = Assert.Single(resource.Annotations.OfType<ContainerImageAnnotation>());
@@ -35,7 +36,53 @@ public class AspireHostingTests
         var endpoint = Assert.Single(builder.AddZeroFactor("keycloak").Resource.Annotations.OfType<EndpointAnnotation>());
 
         Assert.Null(endpoint.Port);
+        Assert.True(endpoint.IsProxied);
         Assert.Equal(8080, endpoint.TargetPort);
+    }
+
+    [Fact]
+    public void Proxy_behavior_can_be_overridden()
+    {
+        var builder = DistributedApplication.CreateBuilder();
+        var endpoint = builder.AddZeroFactor("keycloak", port: 8080, isProxied: true).Resource.Annotations.OfType<EndpointAnnotation>().Single();
+        Assert.True(endpoint.IsProxied);
+    }
+
+    [Fact]
+    public async Task Issuer_and_environment_use_the_allocated_host_port()
+    {
+        var builder = DistributedApplication.CreateBuilder();
+        var oidc = builder.AddZeroFactor("keycloak");
+        var endpoint = oidc.Resource.Annotations.OfType<EndpointAnnotation>().Single();
+        endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "localhost", 12345);
+        var consumer = builder.AddExecutable("consumer", "unused", ".").WithReference(oidc, realm: "shop");
+
+        Assert.Equal("http://localhost:12345/realms/shop", await oidc.GetIssuer("shop").GetValueAsync(TestContext.Current.CancellationToken));
+        var providerEnv = await Environment(oidc.Resource, builder);
+        var consumerEnv = await Environment(consumer.Resource, builder);
+        Assert.Equal("http://localhost:12345", providerEnv["ZF_HOSTNAME"]);
+        Assert.Equal("http://localhost:12345/realms/shop", consumerEnv["ConnectionStrings__keycloak"]);
+
+        builder.AddExecutable("consumer2", "unused", ".").WithReference(oidc, realm: "shop");
+        var urls = new List<ResourceUrlAnnotation>();
+        var context = new ResourceUrlsCallbackContext(builder.ExecutionContext, oidc.Resource, urls, TestContext.Current.CancellationToken);
+        foreach (var callback in oidc.Resource.Annotations.OfType<ResourceUrlsCallbackAnnotation>())
+            await callback.Callback(context);
+        Assert.Contains(urls, u => u.Url.EndsWith("/_0factor/") && u.DisplayText == "Users");
+        Assert.Single(urls, u => u.Url.EndsWith("/_0factor/realms/shop"));
+        Assert.Contains(urls, u => u.Url.EndsWith("/realms/shop/.well-known/openid-configuration"));
+    }
+
+    static async Task<Dictionary<string, string?>> Environment(IResource resource, IDistributedApplicationBuilder builder)
+    {
+        var values = new Dictionary<string, object>();
+        var context = new EnvironmentCallbackContext(builder.ExecutionContext, resource, values, TestContext.Current.CancellationToken);
+        foreach (var callback in resource.Annotations.OfType<EnvironmentCallbackAnnotation>())
+            await callback.Callback(context);
+        var result = new Dictionary<string, string?>();
+        foreach (var (name, value) in values)
+            result[name] = value is IValueProvider provider ? await provider.GetValueAsync(TestContext.Current.CancellationToken) : value.ToString();
+        return result;
     }
 
     [Fact]

@@ -20,26 +20,80 @@ public static class ZeroFactorResourceBuilderExtensions
     private const string DataDirectory = "/data";
     private const string ImportDirectory = "/opt/keycloak/data/import"; // same as Keycloak
 
+    /// <summary>Adds a 0factor container, with an unproxied endpoint when a host port is supplied.</summary>
+    /// <param name="builder">The application builder.</param>
+    /// <param name="name">The resource name.</param>
+    /// <param name="port">The optional host port.</param>
+    /// <returns>The resource builder.</returns>
+    [AspireExport]
+    public static IResourceBuilder<ZeroFactorResource> AddZeroFactor(this IDistributedApplicationBuilder builder, string name, int? port = null)
+        => builder.AddZeroFactor(name, port, isProxied: port is null);
+
     /// <summary>
     /// Adds a 0factor container to the application model. Drop-in for <c>AddKeycloak</c>.
     /// </summary>
     /// <param name="builder">The <see cref="IDistributedApplicationBuilder"/>.</param>
     /// <param name="name">The name of the resource.</param>
     /// <param name="port">The host port. Use a stable port so browser cookies and the token issuer survive restarts.</param>
+    /// <param name="isProxied">Whether to proxy the endpoint.</param>
     /// <returns>The resource builder.</returns>
-    [AspireExport]
-    public static IResourceBuilder<ZeroFactorResource> AddZeroFactor(this IDistributedApplicationBuilder builder, string name, int? port = null)
+    [AspireExport("addZeroFactorWithProxy")]
+    public static IResourceBuilder<ZeroFactorResource> AddZeroFactor(this IDistributedApplicationBuilder builder, string name, int? port, bool isProxied)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        return builder.AddResource(new ZeroFactorResource(name))
+        var resource = builder.AddResource(new ZeroFactorResource(name))
             .WithImage(Image)
             .WithImageRegistry(Registry)
             .WithImageTag(Tag)
             .WithIconName("PersonLock")
-            .WithHttpEndpoint(port: port, targetPort: DefaultContainerPort, name: ZeroFactorResource.PrimaryEndpointName)
-            .WithHttpHealthCheck("/health");
+            .WithHttpEndpoint(port: port, targetPort: DefaultContainerPort, name: ZeroFactorResource.PrimaryEndpointName, isProxied: isProxied)
+            .WithHttpHealthCheck("/health")
+            .WithUrlForEndpoint(ZeroFactorResource.PrimaryEndpointName, ep => new() { Url = "/_0factor/", DisplayText = "Users" });
+
+        // Issuers must use the browser-facing address, even when resolved inside the provider container.
+        return resource.WithEnvironment("ZF_HOSTNAME", resource.GetEndpoint(ZeroFactorResource.PrimaryEndpointName, KnownNetworkIdentifiers.LocalhostNetwork));
+    }
+
+    /// <summary>Returns the realm issuer using the host endpoint, resolved after port allocation.</summary>
+    /// <param name="builder">The 0factor resource builder.</param>
+    /// <param name="realm">The realm name.</param>
+    /// <returns>The issuer URL expression.</returns>
+    [AspireExport]
+    public static ReferenceExpression GetIssuer(this IResourceBuilder<ZeroFactorResource> builder, string realm)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(realm);
+        var endpoint = builder.GetEndpoint(ZeroFactorResource.PrimaryEndpointName, KnownNetworkIdentifiers.LocalhostNetwork);
+        return ReferenceExpression.Create($"{endpoint}/realms/{Uri.EscapeDataString(realm)}");
+    }
+
+    /// <summary>References 0factor and injects the realm issuer as ConnectionStrings__{resource name}.</summary>
+    /// <typeparam name="T">The consuming resource type.</typeparam>
+    /// <param name="builder">The consuming resource builder.</param>
+    /// <param name="oidc">The 0factor resource builder.</param>
+    /// <param name="realm">The realm name.</param>
+    /// <returns>The consuming resource builder.</returns>
+    public static IResourceBuilder<T> WithReference<T>(this IResourceBuilder<T> builder, IResourceBuilder<ZeroFactorResource> oidc, string realm)
+        where T : IResourceWithEnvironment
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        var issuer = oidc.GetIssuer(realm);
+        var escapedRealm = Uri.EscapeDataString(realm);
+        oidc.WithUrls(context =>
+        {
+            if (context.GetEndpoint(ZeroFactorResource.PrimaryEndpointName) is not { } endpoint) return;
+            (string Path, string Label)[] links =
+            [
+                ($"/_0factor/realms/{escapedRealm}", $"{realm} users"),
+                ($"/realms/{escapedRealm}/.well-known/openid-configuration", $"{realm} discovery")
+            ];
+            foreach (var (path, label) in links)
+                if (!context.Urls.Any(u => u.Url == endpoint.Url + path))
+                    context.Urls.Add(new() { Url = endpoint.Url + path, DisplayText = label, Endpoint = endpoint });
+        });
+        return builder.WithReference(oidc).WithEnvironment($"ConnectionStrings__{oidc.Resource.Name}", issuer);
     }
 
     /// <summary>

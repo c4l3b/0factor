@@ -51,9 +51,23 @@ public sealed class AuthorizeTests : IDisposable
     {
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         var html = await response.Content.ReadAsStringAsync(Ct);
+        var original = html;
         Assert.DoesNotContain("type=\"password\"", html, StringComparison.OrdinalIgnoreCase);
+        const string autoSubmit = "<script>document.getElementById(\"form-post\").submit();</script>";
+        if (html.Contains("data-testid=\"form-post\""))
+        {
+            Assert.Contains(autoSubmit, html);
+            Assert.Contains("data-testid=\"continue\"", html);
+            Assert.True(html.IndexOf(autoSubmit, StringComparison.Ordinal) > html.IndexOf("</form>", StringComparison.Ordinal));
+            html = html.Replace(autoSubmit, "");
+        }
         Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);
-        return html;
+        if (html.Contains("data-testid=\"login-title\"") || html.Contains("data-testid=\"form-post\""))
+        {
+            Assert.Contains("color-scheme: light dark", html);
+            Assert.Contains("prefers-color-scheme: dark", html);
+        }
+        return original;
     }
 
     /// <summary>Opens the login page for <paramref name="query"/> and posts only an email.</summary>
@@ -121,7 +135,7 @@ public sealed class AuthorizeTests : IDisposable
         var formPost = await browser.PostAsync("http://localhost/realms/test/login-actions/authenticate",
             new FormUrlEncodedContent([new("auth", Field(login, "auth")), new("email", "alice@example.com")]), Ct);
 
-        // Default ASP.NET response_mode is form_post: a plain form with a Continue button.
+        // Default ASP.NET response_mode is form_post. Plain form posts still work without JavaScript.
         var html = await Html(formPost);
         var fields = Regex.Matches(html, "name=\"([^\"]+)\" value=\"([^\"]*)\"")
             .ToDictionary(m => m.Groups[1].Value, m => WebUtility.HtmlDecode(m.Groups[2].Value));

@@ -1,6 +1,7 @@
 extern alias AppHost;
 
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Aspire.Hosting;
@@ -19,15 +20,32 @@ public class EndToEndTests
 
     record Page(Uri Uri, string Html);
 
-    [Fact]
-    public async Task Sample_signs_in_calls_the_api_and_signs_out_through_0factor()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Sample_signs_in_calls_the_api_and_signs_out_through_0factor(bool fixedPort)
     {
         // The image under test, e.g. `docker build -t 0factor:e2e .` then ZF_E2E_IMAGE=0factor:e2e. CI does both.
         var image = Environment.GetEnvironmentVariable("ZF_E2E_IMAGE");
         Assert.SkipWhen(string.IsNullOrEmpty(image), "Set ZF_E2E_IMAGE to a locally built 0factor image to run the end-to-end test.");
 
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<AppHost::Projects.AppHost>(Ct);
-        var container = appHost.Resources.OfType<ZeroFactorResource>().Single().Annotations.OfType<ContainerImageAnnotation>().Single();
+        var provider = appHost.Resources.OfType<ZeroFactorResource>().Single();
+        var endpoint = provider.Annotations.OfType<EndpointAnnotation>().Single();
+        Assert.False(endpoint.IsProxied); // AddZeroFactor with a fixed port must keep that port in testing.
+        if (fixedPort)
+        {
+            // Avoid colliding with an AppHost already running on the developer's default port.
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            endpoint.Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        else
+        {
+            endpoint.Port = null;
+            endpoint.IsProxied = true;
+        }
+        var container = provider.Annotations.OfType<ContainerImageAnnotation>().Single();
         var colon = image.LastIndexOf(':');
         container.Registry = null;
         (container.Image, container.Tag) = colon > image.LastIndexOf('/') ? (image[..colon], image[(colon + 1)..]) : (image, "latest");
@@ -35,6 +53,10 @@ public class EndToEndTests
         await app.StartAsync(Ct);
         await app.ResourceNotifications.WaitForResourceHealthyAsync("keycloak", Ct);
         var (web, api, zf) = (app.GetEndpoint("web", "http"), app.GetEndpoint("api", "http"), app.GetEndpoint("keycloak", "http"));
+        if (fixedPort) Assert.Equal(endpoint.Port, zf.Port);
+        using var metadataClient = new HttpClient();
+        var metadata = JsonNode.Parse(await metadataClient.GetStringAsync(new Uri(zf, "/realms/shop/.well-known/openid-configuration"), Ct))!;
+        Assert.Equal(new Uri(zf, "/realms/shop").ToString(), (string?)metadata["issuer"]);
         await Listening(web);
         await Listening(api);
 

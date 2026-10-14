@@ -78,7 +78,6 @@ public class Store
         var existing = data.Realms.Find(r => r.Name == imported.Name);
         var fileUsers = imported.Users.Where(u => u.ServiceAccountClientId is null).ToList();
 
-        imported.Lenient = imported.Clients.Count == 0;
         imported.SigningKey ??= existing?.SigningKey;
         imported.Users = existing?.Users ?? [];
         foreach (var user in fileUsers)
