@@ -158,6 +158,7 @@ These fields are ignored by real Keycloak:
 | `registrationFields` | Extra fields on the registration page. Types: `text`, `email`, `tel`, `number`, `date`, `checkbox`, `select`, `textarea`. A field's optional `claim` puts its value in tokens. |
 | `agentNotesRequired` | Default `false`. `true` makes agent notes required on registration and the management page. |
 | `users[].claims`, `users[].agentNotes` | Per-user extra claims and notes. |
+| `users[].pinned`, `users[].hidden` | `pinned` lists the user first on the login page; `hidden` leaves it off the list (typing the email still signs in). Kept across restarts when the file sets neither. |
 
 ```json
 "registrationFields": [
@@ -192,7 +193,7 @@ Local auth is 0factor (mock Keycloak) at http://localhost:8080, realm `<realm>`.
 
 - **Sign in through the app:** on the login page, click an existing user. Read the agent notes and roles to pick the right one. If a page then shows a **Continue** button, click it.
 - **Create a user:** type a new email and fill the registration form. Set roles and claims if the test needs them. Agent notes are optional; write a line saying what the user is for. Leave User ID blank unless test data already references a user ID: whatever you enter becomes the `sub` claim.
-- **Change a user's roles, claims or notes:** use http://localhost:8080/_0factor/realms/<realm>.
+- **Change a user's roles, claims or notes, or pin or hide it on the login page:** use http://localhost:8080/_0factor/realms/<realm>.
 - **Get a token without a browser:**
   `curl -s -d grant_type=password -d client_id=<client> -d username=<email> http://localhost:8080/realms/<realm>/protocol/openid-connect/token`
 ```

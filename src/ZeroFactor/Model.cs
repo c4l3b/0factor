@@ -128,6 +128,10 @@ public class User
     // 0factor extensions
     public string? AgentNotes { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
+    /// <summary>Listed first on the login page.</summary>
+    public bool Pinned { get; set; }
+    /// <summary>Left off the login page's user list; typing the email still signs in.</summary>
+    public bool Hidden { get; set; }
     /// <summary>Arbitrary JSON merged into tokens and userinfo. Names in <see cref="ReservedClaims"/> are rejected.</summary>
     public JsonObject? Claims { get; set; }
 

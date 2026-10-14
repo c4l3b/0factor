@@ -29,7 +29,7 @@ public class AuthCodes
     public AuthCode? Redeem(string code) => codes.TryRemove(code, out var c) && c.Expires > DateTimeOffset.UtcNow ? c : null;
 }
 
-public record LoginModel(string Realm, string Action, string Auth, string? Email, string? Error, List<User> Users);
+public record LoginModel(string Realm, string Action, string Auth, string? Email, string? Error, List<User> Users, int HiddenCount);
 public record ErrorModel(string Message);
 public record FormPostModel(string Action, List<KeyValuePair<string, string?>> Values);
 
@@ -242,9 +242,10 @@ public static class Authorize
 
     static IResult Login(HttpContext context, Realm realm, string auth, string? email, string? error)
     {
-        var users = realm.Users.OrderByDescending(u => u.LastLoginAt).ThenByDescending(u => u.CreatedTimestamp).ToList();
+        var users = realm.Users.Where(u => !u.Hidden)
+            .OrderByDescending(u => u.Pinned).ThenByDescending(u => u.LastLoginAt).ThenByDescending(u => u.CreatedTimestamp).ToList();
         var page = Slices.Login.Create(new LoginModel(realm.Name, $"{context.Request.PathBase}/realms/{realm.Name}/login-actions/authenticate",
-            auth, email, error, users));
+            auth, email, error, users, realm.Users.Count - users.Count));
         if (error is not null) page.StatusCode = StatusCodes.Status400BadRequest;
         return page;
     }

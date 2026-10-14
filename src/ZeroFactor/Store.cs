@@ -90,6 +90,7 @@ public class Store
                 if (user.Id == "") user.Id = stored.Id;
                 if (user.CreatedTimestamp == 0) user.CreatedTimestamp = stored.CreatedTimestamp;
                 user.LastLoginAt ??= stored.LastLoginAt;
+                if (!user.Pinned && !user.Hidden) (user.Pinned, user.Hidden) = (stored.Pinned, stored.Hidden);
                 imported.Users.Remove(stored);
             }
             Initialize(user);
