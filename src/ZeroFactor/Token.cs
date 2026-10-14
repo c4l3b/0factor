@@ -156,6 +156,7 @@ public static class Token
         var audience = client.ProtocolMappers
             .Where(m => m.Mapper == "oidc-audience-mapper" && m.Config.GetValueOrDefault("access.token.claim") != "false")
             .SelectMany(m => new[] { m.Config.GetValueOrDefault("included.client.audience"), m.Config.GetValueOrDefault("included.custom.audience") })
+            .Concat(client.Audience)
             .Concat(clientRoles.Keys.Where(k => k != client.ClientId))
             .OfType<string>().Where(a => a != "").Distinct().ToList();
         var resourceAccess = new JsonObject();

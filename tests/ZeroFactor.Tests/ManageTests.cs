@@ -170,4 +170,39 @@ public sealed class ManageTests : IDisposable
         Assert.DoesNotContain("dave@example.com", await File.ReadAllTextAsync(Path.Combine(dataDir, "0factor.json"), Ct));
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync($"/_0factor/realms/test/users/{dave.Id}/delete", null, Ct)).StatusCode);
     }
+
+    [Fact]
+    public async Task Pinned_user_is_listed_first_and_hidden_user_is_left_off_the_login_page()
+    {
+        var (factory, client, store) = Start();
+        var realm = store.GetRealm("test")!;
+        var (alice, dave) = (realm.FindUser("alice@example.com")!, realm.FindUser("dave@example.com")!);
+        store.Update(_ => alice.LastLoginAt = DateTimeOffset.UtcNow);
+        Task<HttpResponseMessage> List(User user, string listing) =>
+            client.PostAsync($"/_0factor/realms/test/users/{user.Id}/listing", new FormUrlEncodedContent([new("listing", listing)]), Ct);
+
+        Assert.Equal(HttpStatusCode.Redirect, (await List(dave, "pinned")).StatusCode);
+        var login = await Page(client, Auth("test", Request));
+        Assert.True(login.IndexOf("user-dave@example.com") < login.IndexOf("user-alice@example.com"));
+        Assert.Contains("Sign in as dave@example.com (pinned)", login);
+
+        await List(alice, "hidden");
+        login = await Page(client, Auth("test", Request));
+        Assert.DoesNotContain("alice@example.com", login);
+        Assert.Contains("1 hidden user.", login);
+        Assert.Contains(">Show on login page</button>", await Page(client, "/_0factor/realms/test"));
+
+        // Hidden users still sign in by typing the email, and keep their listing across a re-import.
+        var signIn = await client.PostAsync("/realms/test/login-actions/authenticate",
+            new FormUrlEncodedContent([new("auth", Field(login, "auth")), new("email", "alice@example.com")]), Ct);
+        Assert.Equal(HttpStatusCode.Redirect, signIn.StatusCode);
+        store.Import(importDir);
+        realm = store.GetRealm("test")!;
+        Assert.True(realm.FindUser("alice@example.com")!.Hidden);
+        Assert.True(realm.FindUser("dave@example.com")!.Pinned);
+
+        await List(alice, "normal");
+        Assert.Contains("alice@example.com", await Page(Browser(factory), Auth("test", Request)));
+        Assert.Equal(HttpStatusCode.BadRequest, (await List(alice, "top")).StatusCode);
+    }
 }

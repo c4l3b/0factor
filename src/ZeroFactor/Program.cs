@@ -27,6 +27,7 @@ app.UseForwardedHeaders();
 app.MapGet("/health", () => "Healthy");
 app.MapDiscovery();
 app.MapAuthorize();
+app.MapSessionIframe();
 app.MapRegister();
 app.MapToken();
 app.MapIntrospection();

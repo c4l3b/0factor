@@ -136,7 +136,7 @@ public sealed class DiscoveryTests : IDisposable
             }
         }
         string[] required = ["issuer", "authorization_endpoint", "token_endpoint", "introspection_endpoint", "userinfo_endpoint",
-            "end_session_endpoint", "jwks_uri", "revocation_endpoint", "grant_types_supported", "response_types_supported",
+            "end_session_endpoint", "check_session_iframe", "jwks_uri", "revocation_endpoint", "grant_types_supported", "response_types_supported",
             "response_modes_supported", "subject_types_supported", "id_token_signing_alg_values_supported",
             "code_challenge_methods_supported", "token_endpoint_auth_methods_supported", "scopes_supported", "claims_supported",
             "authorization_response_iss_parameter_supported"];

@@ -1,0 +1,16 @@
+@inherits RazorSlice
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cookie support</title></head><body>
+<script>
+(async () => {
+    try {
+        if (document.hasStorageAccess && !await document.hasStorageAccess()) await document.requestStorageAccess();
+        const attributes = location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax";
+        document.cookie = "ZF_COOKIE_PROBE=1; Max-Age=60" + attributes;
+        location.href = "step2.html";
+    } catch {
+        parent.postMessage("unsupported", "*");
+    }
+})();
+</script>
+</body></html>

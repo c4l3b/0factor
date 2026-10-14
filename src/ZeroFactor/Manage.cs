@@ -21,6 +21,7 @@ public static class Manage
                 : Authorize.Error("Realm does not exist.", StatusCodes.Status404NotFound));
         app.MapPost("/_0factor/realms/{realm}/users/{id}", Save);
         app.MapPost("/_0factor/realms/{realm}/users/{id}/delete", Delete);
+        app.MapPost("/_0factor/realms/{realm}/users/{id}/listing", Listing);
     }
 
     static async Task<IResult> Save(string realm, string id, HttpContext context, Store store)
@@ -48,6 +49,19 @@ public static class Manage
             return Authorize.Error("User not found.", StatusCodes.Status404NotFound);
         store.Update(_ => r.Users.Remove(user));
         return Results.Redirect(Url(context, r) + QueryString.Create("deleted", user.Email ?? user.Username));
+    }
+
+    /// <summary>Sets where the user shows on the login page: <c>listing</c> is <c>pinned</c>, <c>hidden</c> or <c>normal</c>.</summary>
+    static async Task<IResult> Listing(string realm, string id, HttpContext context, Store store)
+    {
+        if (Find(store, realm) is not { } r || FindUser(r, id) is not { } user)
+            return Authorize.Error("User not found.", StatusCodes.Status404NotFound);
+        var listing = (await context.Request.ReadFormAsync())["listing"].ToString();
+        if (listing is not ("pinned" or "hidden" or "normal"))
+            return Authorize.Error("listing must be pinned, hidden or normal.");
+        store.Update(_ => (user.Pinned, user.Hidden) = (listing == "pinned", listing == "hidden"));
+        var key = user.Email ?? user.Username;
+        return Results.Redirect(Url(context, r) + QueryString.Create("saved", key));
     }
 
     /// <summary>The edit form's current values for <paramref name="user"/>, in the registration page's input format.</summary>

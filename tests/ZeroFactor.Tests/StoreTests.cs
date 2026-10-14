@@ -143,6 +143,29 @@ public sealed class StoreTests : IDisposable
         Assert.Null(strict.GetClient(strict.GetRealm("auto")!, "other"));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Explicit_leniency_survives_import_and_restart(bool lenient)
+    {
+        ImportFile("shop.json", $$"""{ "realm": "shop", "lenient": {{lenient.ToString().ToLowerInvariant()}}, "clients": [{ "clientId": "web" }] }""");
+        var store = Store.Open(dataDir);
+        store.Import(importDir);
+        store = Store.Open(dataDir);
+        Assert.Equal(lenient, store.GetRealm("shop")!.Lenient);
+        Assert.Equal(lenient, store.GetClient(store.GetRealm("shop")!, "test-client") is not null);
+        Assert.Null(Store.Open(dataDir, strict: true).GetClient(store.GetRealm("shop")!, "unknown"));
+    }
+
+    [Fact]
+    public void Explicit_strict_realm_without_clients_rejects_unknown_clients()
+    {
+        ImportFile("shop.json", """{ "realm": "shop", "lenient": false }""");
+        var store = Store.Open(dataDir);
+        store.Import(importDir);
+        Assert.Null(store.GetClient(store.GetRealm("shop")!, "unknown"));
+    }
+
     [Fact]
     public void Import_rejects_reserved_claim_names()
     {

@@ -13,7 +13,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Build hosting integration against its minimum Aspire dependency
+        run: dotnet build src/ZeroFactor.Aspire.Hosting -warnaserror
       - run: dotnet build -warnaserror
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test iframe protocol scripts
+        run: node --test tests/iframe.test.mjs
       - name: Build image for the end-to-end test
         run: docker build -t 0factor:e2e .
       - name: Test (end-to-end runs the samples/ AppHost against 0factor:e2e)

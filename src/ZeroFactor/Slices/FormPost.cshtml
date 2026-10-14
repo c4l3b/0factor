@@ -2,7 +2,7 @@
 @implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
 
 <h1 data-testid="form-post-title">Return to the application</h1>
-<p>Sign-in finished. Press Continue to send the result back to the application.</p>
+<p>Sign-in finished. Returning to the application. If you stay here, press Continue.</p>
 <form method="post" action="@Model.Action" id="form-post" data-testid="form-post">
     @foreach (var (name, value) in Model.Values)
     {
@@ -10,6 +10,7 @@
     }
     <button type="submit" id="continue" data-testid="continue" autofocus>Continue</button>
 </form>
+<script>document.getElementById("form-post").submit();</script>
 
 @functions {
     public LayoutModel LayoutModel => new("Return to the application");

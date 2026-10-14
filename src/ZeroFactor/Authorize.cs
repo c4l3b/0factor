@@ -29,7 +29,7 @@ public class AuthCodes
     public AuthCode? Redeem(string code) => codes.TryRemove(code, out var c) && c.Expires > DateTimeOffset.UtcNow ? c : null;
 }
 
-public record LoginModel(string Realm, string Action, string Auth, string? Email, string? Error, List<User> Users);
+public record LoginModel(string Realm, string Action, string Auth, string? Email, string? Error, List<User> Users, int HiddenCount);
 public record ErrorModel(string Message);
 public record FormPostModel(string Action, List<KeyValuePair<string, string?>> Values);
 
@@ -149,6 +149,7 @@ public static class Authorize
 
         // ponytail: stateless sessions, so refresh tokens for this sid stay valid. Add an ended-sid set if a test needs them to fail.
         context.Response.Cookies.Delete(SessionCookie, new CookieOptions { Path = CookiePath(context, r) });
+        context.Response.Cookies.Delete(SessionIframe.StatusCookie, new CookieOptions { Path = CookiePath(context, r) });
         if (redirectUri is null) return Slices.SignedOut.Create();
         return Results.Redirect(Get("state") is { } state ? QueryHelpers.AddQueryString(redirectUri, "state", state) : redirectUri);
     }
@@ -200,7 +201,7 @@ public static class Authorize
         var redirectUri = (string)auth["redirect_uri"]!;
         return ((string?)auth["response_mode"] ?? "query") switch
         {
-            // No JavaScript allowed, so no auto-submit: the page shows a Continue button.
+            // Auto-submit with a Continue button for clients without JavaScript.
             "form_post" => Slices.FormPost.Create(new FormPostModel(redirectUri, values)),
             "fragment" => Results.Redirect(redirectUri + "#" + QueryString.Create(values).ToUriComponent()[1..]),
             _ => Results.Redirect(QueryHelpers.AddQueryString(redirectUri, values)),
@@ -224,10 +225,19 @@ public static class Authorize
     /// <summary>Issues or refreshes the session cookie: idle timeout from now, capped at the max lifespan from login.</summary>
     static void SetSession(HttpContext context, RealmKey key, Realm realm, string issuer, string userId, string sid, long authTime)
     {
+        var expires = Math.Min(Now + realm.SsoSessionIdleTimeout, authTime + realm.SsoSessionMaxLifespan);
         var token = Jwt.Create(key, new JsonObject
         {
             ["typ"] = "Session", ["iss"] = issuer, ["sub"] = userId, ["sid"] = sid, ["auth_time"] = authTime,
-            ["exp"] = Math.Min(Now + realm.SsoSessionIdleTimeout, authTime + realm.SsoSessionMaxLifespan),
+            ["exp"] = expires,
+        });
+        // Status only: never expose the signed authentication cookie to iframe JavaScript.
+        context.Response.Cookies.Append(SessionIframe.StatusCookie, sid, new CookieOptions
+        {
+            Path = CookiePath(context, realm),
+            Expires = DateTimeOffset.FromUnixTimeSeconds(expires),
+            SameSite = context.Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
+            Secure = context.Request.IsHttps,
         });
         context.Response.Cookies.Append(SessionCookie, token, new CookieOptions
         {
@@ -242,9 +252,10 @@ public static class Authorize
 
     static IResult Login(HttpContext context, Realm realm, string auth, string? email, string? error)
     {
-        var users = realm.Users.OrderByDescending(u => u.LastLoginAt).ThenByDescending(u => u.CreatedTimestamp).ToList();
+        var users = realm.Users.Where(u => !u.Hidden)
+            .OrderByDescending(u => u.Pinned).ThenByDescending(u => u.LastLoginAt).ThenByDescending(u => u.CreatedTimestamp).ToList();
         var page = Slices.Login.Create(new LoginModel(realm.Name, $"{context.Request.PathBase}/realms/{realm.Name}/login-actions/authenticate",
-            auth, email, error, users));
+            auth, email, error, users, realm.Users.Count - users.Count));
         if (error is not null) page.StatusCode = StatusCodes.Status400BadRequest;
         return page;
     }

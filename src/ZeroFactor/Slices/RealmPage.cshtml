@@ -18,7 +18,7 @@
 </div>
 
 <h2 id="users-title">Users</h2>
-<p class="help">Changes apply to tokens issued from now on, including refreshes; tokens already issued are unchanged. Users from realm import files are reset from the file when 0factor restarts.</p>
+<p class="help">Changes apply to tokens issued from now on, including refreshes; tokens already issued are unchanged. Users from realm import files are reset from the file when 0factor restarts, except pinned and hidden. Hidden users stay off the login page list but can still sign in by email.</p>
 @if (Model.Realm.Users.Count == 0)
 {
     <p data-testid="no-users">No users yet.</p>
@@ -30,7 +30,7 @@
     var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(n => !string.IsNullOrEmpty(n)));
     var action = $"{Model.Url}/users/{Uri.EscapeDataString(user.Id)}";
     <section class="user" id="user-@key" data-testid="user-@key">
-        <h3>@key@(user.Enabled ? "" : " (disabled)")</h3>
+        <h3>@key@(user.Pinned ? " (pinned)" : "")@(user.Hidden ? " (hidden from login page)" : "")@(user.Enabled ? "" : " (disabled)")</h3>
         <dl>
             <dt>User ID</dt><dd data-testid="user-id">@user.Id</dd>
             <dt>Name</dt><dd data-testid="user-name">@(name == "" ? "-" : name)</dd>
@@ -59,6 +59,11 @@
                 @{ Error(user, "agentNotes"); }
             </div>
             <button type="submit" id="@key-save" data-testid="@key-save">Save</button>
+        </form>
+        <form method="post" action="@action/listing" id="listing-@key" data-testid="listing-@key">
+            @if (!user.Pinned) { <button type="submit" name="listing" value="pinned" id="@key-pin" data-testid="@key-pin">Pin on login page</button> }
+            @if (!user.Hidden) { <button type="submit" name="listing" value="hidden" id="@key-hide" data-testid="@key-hide">Hide from login page</button> }
+            @if (user.Pinned || user.Hidden) { <button type="submit" name="listing" value="normal" id="@key-normal" data-testid="@key-normal">@(user.Pinned ? "Unpin" : "Show on login page")</button> }
         </form>
         <form method="post" action="@action/delete" id="delete-@key" data-testid="delete-@key">
             <button type="submit" id="@key-delete" data-testid="@key-delete">Delete user @key</button>

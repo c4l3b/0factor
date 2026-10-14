@@ -51,9 +51,23 @@ public sealed class AuthorizeTests : IDisposable
     {
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         var html = await response.Content.ReadAsStringAsync(Ct);
+        var original = html;
         Assert.DoesNotContain("type=\"password\"", html, StringComparison.OrdinalIgnoreCase);
+        const string autoSubmit = "<script>document.getElementById(\"form-post\").submit();</script>";
+        if (html.Contains("data-testid=\"form-post\""))
+        {
+            Assert.Contains(autoSubmit, html);
+            Assert.Contains("data-testid=\"continue\"", html);
+            Assert.True(html.IndexOf(autoSubmit, StringComparison.Ordinal) > html.IndexOf("</form>", StringComparison.Ordinal));
+            html = html.Replace(autoSubmit, "");
+        }
         Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);
-        return html;
+        if (html.Contains("data-testid=\"login-title\"") || html.Contains("data-testid=\"form-post\""))
+        {
+            Assert.Contains("color-scheme: light dark", html);
+            Assert.Contains("prefers-color-scheme: dark", html);
+        }
+        return original;
     }
 
     /// <summary>Opens the login page for <paramref name="query"/> and posts only an email.</summary>
@@ -121,7 +135,7 @@ public sealed class AuthorizeTests : IDisposable
         var formPost = await browser.PostAsync("http://localhost/realms/test/login-actions/authenticate",
             new FormUrlEncodedContent([new("auth", Field(login, "auth")), new("email", "alice@example.com")]), Ct);
 
-        // Default ASP.NET response_mode is form_post: a plain form with a Continue button.
+        // Default ASP.NET response_mode is form_post. Plain form posts still work without JavaScript.
         var html = await Html(formPost);
         var fields = Regex.Matches(html, "name=\"([^\"]+)\" value=\"([^\"]*)\"")
             .ToDictionary(m => m.Groups[1].Value, m => WebUtility.HtmlDecode(m.Groups[2].Value));
@@ -174,7 +188,7 @@ public sealed class AuthorizeTests : IDisposable
         Assert.Equal(["state", "session_state", "iss", "code"], query.Keys);
         Assert.Equal("s1", query["state"]);
         Assert.Equal(Issuer, query["iss"]);
-        var cookie = Assert.Single(first.Headers.GetValues("Set-Cookie"));
+        var cookie = Assert.Single(first.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION="));
         Assert.StartsWith("ZF_SESSION=", cookie);
         Assert.Contains("path=/realms/test/", cookie);
         Assert.Contains("httponly", cookie);
@@ -359,7 +373,7 @@ public sealed class AuthorizeTests : IDisposable
             ("agentNotes", "admin in tenant acme, used for billing tests"));
         var query = Query(response);
         Assert.Equal("s1", query["state"]);
-        Assert.StartsWith("ZF_SESSION=", response.Headers.GetValues("Set-Cookie").Single());
+        Assert.StartsWith("ZF_SESSION=", Assert.Single(response.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION=")));
 
         var realm = factory.Services.GetRequiredService<Store>().GetRealm("shop")!;
         var user = realm.FindUser("new@example.com")!;

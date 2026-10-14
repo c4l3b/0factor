@@ -98,6 +98,29 @@ public sealed class TokenTests : IDisposable
     static List<string?> Strings(JsonNode? array) => array!.AsArray().Select(n => (string?)n).ToList();
 
     [Fact]
+    public async Task Lenient_imported_client_accepts_any_redirect_and_secret_and_adds_audience_shorthand()
+    {
+        File.WriteAllText(Path.Combine(importDir, "local.json"), """
+            { "realm": "local", "lenient": true,
+              "clients": [{ "clientId": "web", "audience": ["api", "api"], "protocolMappers": [
+                { "protocolMapper": "oidc-audience-mapper", "config": { "included.custom.audience": "mapped" } }
+              ] }],
+              "users": [{ "id": "existing", "username": "alice@example.com", "claims": { "name": "Local Admin" } }] }
+            """);
+        var client = Start().CreateClient(new() { AllowAutoRedirect = false });
+        var login = await client.GetAsync(Auth("local", "client_id=web&redirect_uri=http://localhost:9876/callback&response_type=code"), Ct);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var tokens = await Exchange(client, "local", ("grant_type", "password"), ("client_id", "web"),
+            ("client_secret", "anything"), ("username", "alice@example.com"), ("scope", "openid"));
+        var access = Payload((string)tokens["access_token"]!);
+        Assert.Equal(["mapped", "api", "account"], Strings(access["aud"]));
+        Assert.Equal("existing", (string?)access["sub"]);
+        Assert.Equal("Local Admin", (string?)access["name"]);
+        Assert.Equal("web", (string?)Payload((string)tokens["id_token"]!)["aud"]);
+        await Exchange(client, "local", ("grant_type", "password"), ("client_id", "unlisted-test-client"), ("username", "alice@example.com"));
+    }
+
+    [Fact]
     public async Task Password_grant_ignores_the_password_and_returns_keycloak_shaped_tokens()
     {
         var factory = Start();
@@ -528,7 +551,7 @@ public sealed class TokenTests : IDisposable
         var logout = await browser.GetAsync($"{Logout}?id_token_hint={hint}&post_logout_redirect_uri={Back}&state=s1", Ct);
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Equal($"{Back}?state=s1", logout.Headers.Location!.ToString());
-        var cleared = Assert.Single(logout.Headers.GetValues("Set-Cookie"));
+        var cleared = Assert.Single(logout.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION="));
         Assert.StartsWith("ZF_SESSION=;", cleared);
         Assert.Contains("path=/realms/shop/", cleared);
 

@@ -17,11 +17,11 @@
 </form>
 
 <h2>Existing users</h2>
-@if (Model.Users.Count == 0)
+@if (Model.Users.Count == 0 && Model.HiddenCount == 0)
 {
     <p data-testid="no-users">No users yet. Type any email to create one.</p>
 }
-else
+else if (Model.Users.Count > 0)
 {
     <form method="post" action="@Model.Action" id="user-list" data-testid="user-list">
         <input type="hidden" name="auth" value="@Model.Auth">
@@ -33,7 +33,7 @@ else
             var roles = string.Join(", ", user.RealmRoles.Concat(user.ClientRoles.SelectMany(c => c.Value.Select(role => $"{c.Key}:{role}"))));
             <li>
                 <button type="submit" name="email" value="@email" data-testid="user-@email">
-                    <span class="email">Sign in as @email@(user.Enabled ? "" : " (disabled)")</span>
+                    <span class="email">Sign in as @email@(user.Pinned ? " (pinned)" : "")@(user.Enabled ? "" : " (disabled)")</span>
                     @if (name != "") { <span data-testid="user-name">@name</span> }
                     @if (roles != "") { <span data-testid="user-roles">Roles: @roles</span> }
                     @if (!string.IsNullOrEmpty(user.AgentNotes)) { <span class="notes" data-testid="user-notes">@user.AgentNotes</span> }
@@ -42,6 +42,10 @@ else
         }
         </ul>
     </form>
+}
+@if (Model.HiddenCount > 0)
+{
+    <p class="help" data-testid="hidden-users">@Model.HiddenCount hidden @(Model.HiddenCount == 1 ? "user" : "users"). Type the email above to sign in as one.</p>
 }
 
 @functions {

@@ -25,7 +25,7 @@ These follow from decisions in #1. Don't change them without updating #1 first.
 - **UI = RazorSlices.** Server-rendered, plain HTML forms, inline CSS.
 - **Agent-friendly pages.** Every page must follow these rules; tests enforce them:
   - No `<input type="password">` anywhere. Agents refuse to fill password fields, which is the reason this project exists.
-  - No JavaScript, no CAPTCHA, no consent or confirmation screens.
+  - Keep login and registration plain HTML forms without JavaScript. JavaScript is allowed where a protocol feature requires it, such as session-status/cookie-probe iframes and the `form_post` auto-submit script (which must retain a working Continue button without JavaScript). No CAPTCHA, no consent or confirmation screens.
   - Real `<label>` elements, visible text on every action, stable `id`/`name`/`data-testid` attributes.
   - Every flow works with plain `curl` form POSTs.
 - **Keycloak parity.** Use Keycloak's paths, parameter names, JSON property names, error codes and error messages. When unsure how Keycloak behaves, check Keycloak 26 behavior or docs rather than guessing. Deliberate divergences go in the README's divergences list.
@@ -68,6 +68,7 @@ docker run --rm -p 8080:8080 0factor
 
 - Prove compatibility with real clients: run flows through ASP.NET Core's `AddOpenIdConnect` / `AddJwtBearer` (or `Aspire.Keycloak.Authentication`) handlers, not only hand-written assertions.
 - Browser flows are tested with `HttpClient` + cookies + form posts. No Playwright.
+- Iframe protocol scripts are tested with Node's built-in test runner: `node --test tests/iframe.test.mjs`.
 - Realm-import tests use a real Keycloak export under `tests/fixtures/`.
 - Run `dotnet publish` (AOT) before calling work done. Tests run JIT and won't catch AOT breakage.
 

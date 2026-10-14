@@ -78,7 +78,6 @@ public class Store
         var existing = data.Realms.Find(r => r.Name == imported.Name);
         var fileUsers = imported.Users.Where(u => u.ServiceAccountClientId is null).ToList();
 
-        imported.Lenient = imported.Clients.Count == 0;
         imported.SigningKey ??= existing?.SigningKey;
         imported.Users = existing?.Users ?? [];
         foreach (var user in fileUsers)
@@ -90,6 +89,7 @@ public class Store
                 if (user.Id == "") user.Id = stored.Id;
                 if (user.CreatedTimestamp == 0) user.CreatedTimestamp = stored.CreatedTimestamp;
                 user.LastLoginAt ??= stored.LastLoginAt;
+                if (!user.Pinned && !user.Hidden) (user.Pinned, user.Hidden) = (stored.Pinned, stored.Hidden);
                 imported.Users.Remove(stored);
             }
             Initialize(user);
