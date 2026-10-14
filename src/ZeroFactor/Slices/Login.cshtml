@@ -30,6 +30,16 @@ else if (Model.Users.Count > 0)
         {
             var email = user.Email ?? user.Username;
             var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(n => !string.IsNullOrEmpty(n)));
+            if (name == "")
+            {
+                foreach (var claim in new[] { "name", "given_name" })
+                    if (user.Claims?[claim] is System.Text.Json.Nodes.JsonValue value
+                        && value.TryGetValue<string>(out var claimName) && !string.IsNullOrWhiteSpace(claimName))
+                    {
+                        name = claimName;
+                        break;
+                    }
+            }
             var roles = string.Join(", ", user.RealmRoles.Concat(user.ClientRoles.SelectMany(c => c.Value.Select(role => $"{c.Key}:{role}"))));
             <li>
                 <button type="submit" name="email" value="@email" data-testid="user-@email">

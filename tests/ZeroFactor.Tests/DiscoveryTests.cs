@@ -213,6 +213,23 @@ public sealed class DiscoveryTests : IDisposable
     }
 
     [Theory]
+    [InlineData("http://localhost")]
+    [InlineData("https://old.example.test/legacy/")]
+    public async Task Issuer_override_preserves_exact_value_and_realm_endpoint_urls(string issuer)
+    {
+        var client = Start(("ZF_ISSUER", issuer), ("ZF_HOSTNAME", "https://id.example.test/")).CreateClient();
+        var doc = await GetJson(client, "/realms/test/.well-known/openid-configuration");
+        Assert.Equal(issuer, (string?)doc["issuer"]);
+        foreach (var name in new[] { "authorization_endpoint", "token_endpoint", "introspection_endpoint", "userinfo_endpoint",
+                     "end_session_endpoint", "check_session_iframe", "jwks_uri", "revocation_endpoint" })
+            Assert.StartsWith("https://id.example.test/realms/test/protocol/openid-connect/", (string?)doc[name]);
+        var info = await GetJson(client, "/realms/test");
+        Assert.Equal("https://id.example.test/realms/test/protocol/openid-connect", (string?)info["token-service"]);
+        var page = await client.GetStringAsync("/_0factor/realms/test", TestContext.Current.CancellationToken);
+        Assert.Contains("https://id.example.test/realms/test/.well-known/openid-configuration", page);
+    }
+
+    [Theory]
     [InlineData("/realms/nope/.well-known/openid-configuration")]
     [InlineData("/realms/nope/protocol/openid-connect/certs")]
     [InlineData("/realms/nope")]

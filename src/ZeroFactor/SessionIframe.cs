@@ -23,7 +23,7 @@ public static class SessionIframe
                 || uri.Scheme is not ("http" or "https") || uri.GetLeftPart(UriPartial.Authority) != origin)
                 return Results.NotFound();
             if (store.GetClient(r, clientId) is not { } client) return Results.NotFound();
-            var serverOrigin = new Uri(Discovery.Issuer(context.Request, realm)).GetLeftPart(UriPartial.Authority);
+            var serverOrigin = new Uri(Discovery.RealmUrl(context.Request, realm)).GetLeftPart(UriPartial.Authority);
             var allowed = r.Lenient || origin == serverOrigin || client.WebOrigins.Any(o =>
                 o == "*" || o == origin || (o == "+" && client.RedirectUris.Any(redirect =>
                     Uri.TryCreate(redirect, UriKind.Absolute, out var target) && target.GetLeftPart(UriPartial.Authority) == origin)));
