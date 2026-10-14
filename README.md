@@ -8,7 +8,7 @@ Login is just an email address. No password, no MFA. The login page lists existi
 > **Never use this in production.** Anyone who can reach it can sign in as anyone.
 
 > [!NOTE]
-> The container image is available on [GHCR](https://github.com/c4l3b/0factor/pkgs/container/0factor), and the hosting package on [NuGet](https://www.nuget.org/packages/ZeroFactor.Aspire.Hosting). Release tags publish matching image and package versions. See [GitHub tags](https://github.com/c4l3b/0factor/tags) for release history.
+> The container image is available on [GHCR](https://github.com/c4l3b/0factor/pkgs/container/0factor), and the hosting package on [NuGet](https://www.nuget.org/packages/ZeroFactor.Aspire.Hosting). Publishing a [GitHub release](https://github.com/c4l3b/0factor/releases) with a `vX.Y.Z` tag builds and publishes matching image and package versions. Draft releases and tag pushes alone do not publish packages.
 
 [Quick start](#quick-start) · [Aspire](#aspire) · [Seed users](#seed-realms-users-and-claims) · [Tokens for tests](#tokens-for-tests) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 

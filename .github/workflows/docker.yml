@@ -1,8 +1,8 @@
 name: docker
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   pull_request:
 
 env:

@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Release overrides with -p:Version from the v* tag; the image tag is read from it (ZeroFactorContainerImageTags). -->
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <PackageId>ZeroFactor.Aspire.Hosting</PackageId>
     <Description>Aspire hosting integration for 0factor, a mock OIDC provider for local development that swaps in for Keycloak with one line.</Description>
     <PackageTags>aspire integration hosting keycloak oidc mock authentication</PackageTags>

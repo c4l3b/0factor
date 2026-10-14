@@ -1,12 +1,13 @@
 name: nuget
 
-# Same v* tag as the image (docker.yml), so ZeroFactor.Aspire.Hosting X.Y.Z defaults to ghcr.io/c4l3b/0factor:X.Y.Z.
+# Same release tag as the image (docker.yml), so ZeroFactor.Aspire.Hosting X.Y.Z defaults to ghcr.io/c4l3b/0factor:X.Y.Z.
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
 
 jobs:
   publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,7 +17,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - run: dotnet pack src/ZeroFactor.Aspire.Hosting -c Release -warnaserror -p:Version=${GITHUB_REF_NAME#v} -o out
+      - run: dotnet pack src/ZeroFactor.Aspire.Hosting -c Release -warnaserror -p:Version="${GITHUB_REF_NAME#v}" -o out
       - uses: NuGet/login@v1
         id: login
         with:
