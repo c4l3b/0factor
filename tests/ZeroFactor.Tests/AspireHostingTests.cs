@@ -20,7 +20,7 @@ public class AspireHostingTests
         Assert.Equal(8080, endpoint.TargetPort);
 
         var image = Assert.Single(resource.Annotations.OfType<ContainerImageAnnotation>());
-        Assert.Equal("ghcr.io", image.Registry);
+        Assert.Equal("docker.io", image.Registry);
         Assert.Equal("c4l3b/0factor", image.Image);
         Assert.Equal(typeof(ZeroFactorResource).Assembly.GetName().Version!.ToString(3), image.Tag);
 

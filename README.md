@@ -8,14 +8,14 @@ Login is just an email address. No password, no MFA. The login page lists existi
 > **Never use this in production.** Anyone who can reach it can sign in as anyone.
 
 > [!NOTE]
-> The container image is available on [GHCR](https://github.com/c4l3b/0factor/pkgs/container/0factor), and the hosting package on [NuGet](https://www.nuget.org/packages/ZeroFactor.Aspire.Hosting). Publishing a [GitHub release](https://github.com/c4l3b/0factor/releases) with a `vX.Y.Z` tag builds and publishes matching image and package versions. Draft releases and tag pushes alone do not publish packages.
+> The container image is available on [Docker Hub](https://hub.docker.com/r/c4l3b/0factor), and the hosting package on [NuGet](https://www.nuget.org/packages/ZeroFactor.Aspire.Hosting). Publishing a [GitHub release](https://github.com/c4l3b/0factor/releases) with a `vX.Y.Z` tag builds and publishes matching image and package versions. Draft releases and tag pushes alone do not publish packages.
 
 [Quick start](#quick-start) · [Aspire](#aspire) · [Seed users](#seed-realms-users-and-claims) · [Tokens for tests](#tokens-for-tests) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
 ## Quick start
 
 ```bash
-docker run --rm -p 8080:8080 -v zf-data:/data ghcr.io/c4l3b/0factor:latest
+docker run --rm -p 8080:8080 -v zf-data:/data c4l3b/0factor:latest
 ```
 
 Configure your app's OIDC client with:
@@ -135,7 +135,7 @@ Start the container with the import directory mounted (stop the quick-start cont
 ```bash
 docker run --rm -p 8080:8080 -v zf-data:/data \
   -v "$(pwd)/realms:/opt/keycloak/data/import:ro" \
-  ghcr.io/c4l3b/0factor:latest
+  c4l3b/0factor:latest
 ```
 
 With Aspire, use `.WithRealmImport("./realms")` instead. Imports run at startup; restart after changing a file. Imported realms default to registration disabled, so include `registrationAllowed: true` if new emails should be able to register.

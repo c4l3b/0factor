@@ -24,7 +24,7 @@ builder.Services.AddAuthentication()
 
 | Method | Container |
 |---|---|
-| `AddZeroFactor(name, port)` | `ghcr.io/c4l3b/0factor:<package version>`, endpoint `http` → 8080, health check `/health` |
+| `AddZeroFactor(name, port)` | `docker.io/c4l3b/0factor:<package version>`, endpoint `http` → 8080, health check `/health` |
 | `WithRealmImport(path)` | copies files to `/opt/keycloak/data/import` |
 | `WithDataVolume(name)` / `WithDataBindMount(source)` | mounts `/data` (holds `0factor.json`) |
 
