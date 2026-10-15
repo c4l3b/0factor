@@ -29,15 +29,27 @@ public class AspireHostingTests
     }
 
     [Fact]
-    public void Port_is_optional()
+    public void Port_defaults_to_one_derived_from_the_AppHost()
+    {
+        static EndpointAnnotation Endpoint(string name)
+            => DistributedApplication.CreateBuilder().AddZeroFactor(name).Resource.Annotations.OfType<EndpointAnnotation>().Single();
+
+        var endpoint = Endpoint("keycloak");
+
+        Assert.InRange(endpoint.Port!.Value, 20000, 29999);
+        Assert.False(endpoint.IsProxied);
+        Assert.Equal(8080, endpoint.TargetPort);
+        Assert.Equal(endpoint.Port, Endpoint("keycloak").Port); // stable across restarts
+        Assert.NotEqual(endpoint.Port, Endpoint("other").Port);
+    }
+
+    [Fact]
+    public void Dynamic_port_is_still_available()
     {
         var builder = DistributedApplication.CreateBuilder();
-
-        var endpoint = Assert.Single(builder.AddZeroFactor("keycloak").Resource.Annotations.OfType<EndpointAnnotation>());
-
+        var endpoint = builder.AddZeroFactor("keycloak", port: null, isProxied: true).Resource.Annotations.OfType<EndpointAnnotation>().Single();
         Assert.Null(endpoint.Port);
         Assert.True(endpoint.IsProxied);
-        Assert.Equal(8080, endpoint.TargetPort);
     }
 
     [Fact]

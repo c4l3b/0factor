@@ -318,7 +318,7 @@ public sealed class AuthorizeTests : IDisposable
         var page = await client.GetAsync(Auth("closed", Request + "&login_hint=hint@example.com"), Ct);
         var html = await Html(page);
         Assert.Contains("<title>Sign in to closed · 0factor</title>", html);
-        Assert.Contains("0factor test identity provider. No passwords. Pick a user below or type an email.", html);
+        Assert.Contains("Test identity provider. No passwords.", html);
         Assert.Contains("<label for=\"email\">Email</label>", html);
         Assert.Contains("<input id=\"email\" name=\"email\" type=\"email\" required autofocus value=\"hint@example.com\"", html);
         Assert.Contains("<button type=\"submit\" id=\"continue\" data-testid=\"continue\">Continue</button>", html);

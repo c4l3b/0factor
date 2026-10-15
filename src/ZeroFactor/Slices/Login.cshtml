@@ -1,8 +1,10 @@
 @inherits RazorSlice<LoginModel>
 @implements IUsesLayout<ZeroFactor.Slices._Layout, LayoutModel>
 
+<p class="brand"><span class="logo" aria-hidden="true">0f</span> 0factor <span class="pill">Dev only</span></p>
+<div class="card">
 <h1 data-testid="login-title">Sign in to @Model.Realm</h1>
-<p class="warn" data-testid="banner">0factor test identity provider. No passwords. Pick a user below or type an email.</p>
+<p class="sub" data-testid="banner">Test identity provider. No passwords.</p>
 
 @if (Model.Error is not null)
 {
@@ -16,7 +18,7 @@
     <button type="submit" id="continue" data-testid="continue">Continue</button>
 </form>
 
-<h2>Existing users</h2>
+<h2 class="or">Or pick a user</h2>
 @if (Model.Users.Count == 0 && Model.HiddenCount == 0)
 {
     <p data-testid="no-users">No users yet. Type any email to create one.</p>
@@ -40,13 +42,20 @@ else if (Model.Users.Count > 0)
                         break;
                     }
             }
+            var words = (name != "" ? name : email.Split('@')[0]).Split(' ', '.', '_', '-', '+').Where(w => w != "").ToArray();
+            var initials = (words.Length > 1 ? $"{words[0][0]}{words[1][0]}" : words.FirstOrDefault()?[..Math.Min(2, words[0].Length)] ?? "?").ToUpperInvariant();
+            var hue = email.Sum(c => c) % 360;
             var roles = string.Join(", ", user.RealmRoles.Concat(user.ClientRoles.SelectMany(c => c.Value.Select(role => $"{c.Key}:{role}"))));
             <li>
-                <button type="submit" name="email" value="@email" data-testid="user-@email">
-                    <span class="email">Sign in as @email@(user.Pinned ? " (pinned)" : "")@(user.Enabled ? "" : " (disabled)")</span>
-                    @if (name != "") { <span data-testid="user-name">@name</span> }
-                    @if (roles != "") { <span data-testid="user-roles">Roles: @roles</span> }
-                    @if (!string.IsNullOrEmpty(user.AgentNotes)) { <span class="notes" data-testid="user-notes">@user.AgentNotes</span> }
+                <button type="submit" name="email" value="@email" data-testid="user-@email" class="@(user.Enabled ? null : "disabled")">
+                    <span class="avatar" style="--hue: @hue" aria-hidden="true">@initials</span>
+                    <span class="who">
+                        @if (name != "") { <span data-testid="user-name">@name</span> }
+                        <span class="email">Sign in as @email@(user.Pinned ? " (pinned)" : "")@(user.Enabled ? "" : " (disabled)")</span>
+                        @if (roles != "") { <span data-testid="user-roles">Roles: @roles</span> }
+                        @if (!string.IsNullOrEmpty(user.AgentNotes)) { <span class="notes" data-testid="user-notes">@user.AgentNotes</span> }
+                    </span>
+                    <span class="chevron" aria-hidden="true">›</span>
                 </button>
             </li>
         }
@@ -57,6 +66,7 @@ else if (Model.Users.Count > 0)
 {
     <p class="help" data-testid="hidden-users">@Model.HiddenCount hidden @(Model.HiddenCount == 1 ? "user" : "users"). Type the email above to sign in as one.</p>
 }
+</div>
 
 @functions {
     public LayoutModel LayoutModel => new($"Sign in to {Model.Realm}");

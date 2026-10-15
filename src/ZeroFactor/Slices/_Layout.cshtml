@@ -9,12 +9,14 @@
         :root {
             color-scheme: light dark;
             --bg: #fff; --fg: #1f2328; --muted: #59636e; --border: #d1d9e0; --surface: #f6f8fa;
-            --accent: #2f6290; --accent-fg: #fff; --error: #b42318;
+            --accent: #3b5bdb; --accent-fg: #fff; --error: #b42318; --ring: rgb(59 91 219 / .18);
+            --warn-bg: #fff4d6; --warn-fg: #8a5a00; --page: var(--surface); --card: var(--bg);
         }
         @@media (prefers-color-scheme: dark) {
             :root {
                 --bg: #16191d; --fg: #e3e6ea; --muted: #9aa3ad; --border: #343b44; --surface: #1d2126;
-                --accent: #6f9cc6; --accent-fg: #0e1114; --error: #f0857a;
+                --accent: #8ea4f5; --accent-fg: #0e1114; --error: #f0857a; --ring: rgb(142 164 245 / .25);
+                --warn-bg: #3a2e12; --warn-fg: #f5c86a; --page: var(--bg); --card: var(--surface);
             }
         }
         *, *::before, *::after { box-sizing: border-box; }
@@ -29,8 +31,9 @@
         label { display: block; margin-bottom: .375rem; font-size: .875rem; font-weight: 500; }
         input:not([type=checkbox]), select, textarea {
             display: block; width: 100%; padding: .5rem .625rem; font: inherit; color: inherit;
-            background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+            background: var(--card, var(--bg)); border: 1px solid var(--border); border-radius: 8px;
         }
+        input:not([type=checkbox]):focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--ring); }
         input[readonly] { background: var(--surface); color: var(--muted); }
         textarea { min-height: 4.5rem; resize: vertical; }
         textarea[name=claims] { font: .875rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -47,7 +50,7 @@
         legend { padding: 0 .375rem; font-size: .875rem; font-weight: 600; }
         button {
             padding: .5rem 1rem; font: inherit; font-weight: 500; color: inherit; cursor: pointer;
-            background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
         }
         button:hover { border-color: var(--muted); }
         /* Primary and destructive buttons are picked by their stable ids so the markup stays untouched. */
@@ -58,12 +61,33 @@
         .warn { font-size: .875rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1.5rem; }
         .error { font-weight: 500; color: var(--error); }
         .field .error, fieldset .error, form > .error { margin: .375rem 0 0; font-size: .875rem; }
+        /* Login card: centered on a tinted page, picked by the .card wrapper so other pages keep the plain layout. */
+        body:has(.card) { background: var(--page); }
+        main:has(.card) { max-width: 28rem; padding-top: 4rem; }
+        .brand { display: flex; align-items: center; justify-content: center; gap: .5rem; margin: 0 0 1.75rem; font-weight: 650; }
+        .logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--fg); color: var(--bg); font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .pill { padding: .125rem .5rem; border-radius: 999px; background: var(--warn-bg); color: var(--warn-fg); font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; box-shadow: 0 1px 2px rgb(16 24 40 / .04), 0 12px 24px -12px rgb(16 24 40 / .14); }
+        .card h1 { text-align: center; margin-bottom: .25rem; }
+        .sub { color: var(--muted); font-size: .875rem; text-align: center; margin-bottom: 1.75rem; }
+        .card form > input[type=email] { margin-bottom: .875rem; }
+        .card #continue { width: 100%; padding: .625rem; }
+        .card .error { text-align: center; }
+        .card .help { text-align: center; margin-top: 1rem; }
+        .or { display: flex; align-items: center; gap: .75rem; margin: 1.75rem 0 1rem; padding: 0; border: 0; color: var(--muted); font-size: .75rem; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; }
+        .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+        .card > p:last-child { text-align: center; color: var(--muted); font-size: .875rem; margin: 0; }
         .users { list-style: none; padding: 0; margin: 0; }
-        .users button { display: block; width: 100%; text-align: left; margin: 0 0 .5rem; padding: .625rem .875rem; font-weight: 400; background: var(--bg); }
-        .users button:hover { border-color: var(--accent); background: var(--surface); }
-        .users span { display: block; font-size: .875rem; color: var(--muted); overflow-wrap: anywhere; }
-        .users .email { font-size: .9375rem; font-weight: 600; color: var(--fg); }
+        .users button { display: flex; align-items: center; gap: .75rem; width: 100%; text-align: left; margin: 0 0 .25rem; padding: .625rem .75rem; font-weight: 400; background: transparent; border-color: transparent; border-radius: 10px; }
+        .users button:hover { background: var(--page); border-color: var(--border); }
+        .users button.disabled { opacity: .55; }
+        .avatar { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: hsl(var(--hue) 55% 48%); color: #fff; font-size: .8125rem; font-weight: 600; }
+        .who { flex: 1; min-width: 0; }
+        .who span { display: block; font-size: .8125rem; color: var(--muted); overflow-wrap: anywhere; }
+        .who > :first-child { font-size: .9375rem; font-weight: 600; color: var(--fg); }
         .users .notes { font-style: italic; }
+        .chevron { color: var(--muted); font-size: 1.25rem; line-height: 1; }
+        .users button:hover .chevron { color: var(--accent); }
         table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; font-size: .875rem; }
         th, td { text-align: left; vertical-align: top; padding: .5rem .75rem .5rem 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
         th { font-weight: 600; color: var(--muted); }
