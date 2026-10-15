@@ -1,0 +1,17 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.1">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Web/BasicWeb.csproj" />
+    <!-- In your own AppHost, install ZeroFactor.Aspire.Hosting from NuGet instead. -->
+    <ProjectReference Include="../../../src/ZeroFactor.Aspire.Hosting/ZeroFactor.Aspire.Hosting.csproj" IsAspireProjectResource="false" />
+  </ItemGroup>
+
+</Project>
