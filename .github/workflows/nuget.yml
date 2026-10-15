@@ -1,6 +1,6 @@
 name: nuget
 
-# Same release tag as the image (docker.yml), so ZeroFactor.Aspire.Hosting X.Y.Z defaults to ghcr.io/c4l3b/0factor:X.Y.Z.
+# Same release tag as the image (docker.yml), so ZeroFactor.Aspire.Hosting X.Y.Z defaults to docker.io/c4l3b/0factor:X.Y.Z.
 on:
   release:
     types: [published]

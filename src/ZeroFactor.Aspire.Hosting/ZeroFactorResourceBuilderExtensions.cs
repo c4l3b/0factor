@@ -12,7 +12,7 @@ namespace Aspire.Hosting;
 /// </summary>
 public static class ZeroFactorResourceBuilderExtensions
 {
-    internal const string Registry = "ghcr.io";
+    internal const string Registry = "docker.io";
     internal const string Image = "c4l3b/0factor";
     // The image is published on the same v* tag as this package, so the tag is the package version.
     internal static readonly string Tag = typeof(ZeroFactorResource).Assembly
