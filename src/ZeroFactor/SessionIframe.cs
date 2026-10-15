@@ -24,10 +24,7 @@ public static class SessionIframe
                 return Results.NotFound();
             if (store.GetClient(r, clientId) is not { } client) return Results.NotFound();
             var serverOrigin = new Uri(Discovery.RealmUrl(context.Request, realm)).GetLeftPart(UriPartial.Authority);
-            var allowed = r.Lenient || origin == serverOrigin || client.WebOrigins.Any(o =>
-                o == "*" || o == origin || (o == "+" && client.RedirectUris.Any(redirect =>
-                    Uri.TryCreate(redirect, UriKind.Absolute, out var target) && target.GetLeftPart(UriPartial.Authority) == origin)));
-            return allowed ? Results.NoContent() : Results.NotFound();
+            return origin == serverOrigin || Cors.Allows(r, client, origin) ? Results.NoContent() : Results.NotFound();
         });
         app.MapGet(path + "3p-cookies/step1.html", IResult (string realm, HttpContext context, Store store) =>
         {
