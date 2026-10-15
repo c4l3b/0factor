@@ -139,6 +139,7 @@ public static class Authorize
             clientId = (string?)idToken["azp"];
         }
 
+        Cors.Apply(context, r, clientId is null ? null : store.GetClient(r, clientId));
         var redirectUri = Get("post_logout_redirect_uri");
         if (redirectUri is not null)
         {

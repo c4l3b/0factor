@@ -30,6 +30,7 @@ app.MapAuthorize();
 app.MapSessionIframe();
 app.MapRegister();
 app.MapToken();
+app.MapCorsPreflight();
 app.MapIntrospection();
 app.MapManage();
 

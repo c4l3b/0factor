@@ -28,6 +28,7 @@ public static class Token
         if (Get("grant_type") is not { } grantType) return Error("invalid_request", "Missing form parameter: grant_type");
 
         var (client, error) = AuthenticateClient(context.Request, form, store, r);
+        Cors.Apply(context, r, client);
         if (client is null) return error!;
 
         User? FindById(string? id) => r.Users.Find(u => u.Id == id);

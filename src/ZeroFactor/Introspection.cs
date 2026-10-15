@@ -32,6 +32,7 @@ public static class Introspection
             || r.Users.Find(u => u.Id == (string?)payload["sub"]) is not { Enabled: true } user)
             return Unauthorized(context, $"Bearer realm=\"{r.Name}\", error=\"invalid_token\", error_description=\"Token verification failed\"");
 
+        Cors.Apply(context, r, store.GetClient(r, (string?)payload["azp"] ?? ""));
         var claims = new JsonObject { ["sub"] = user.Id };
         foreach (var (name, value) in Token.UserClaims(r, user)) claims[name] = value?.DeepClone();
         return Discovery.Json(claims);
@@ -74,6 +75,7 @@ public static class Introspection
         if (store.GetRealm(realm) is not { } r) return Discovery.RealmNotFound();
         var form = context.Request.HasFormContentType ? await context.Request.ReadFormAsync() : FormCollection.Empty;
         var (client, error) = Token.AuthenticateClient(context.Request, form, store, r);
+        Cors.Apply(context, r, client);
         if (client is null) return error!;
         if (form["token"].ToString() is not { Length: > 0 } token) return Error("Token not provided", StatusCodes.Status400BadRequest);
         // Keycloak answers an unusable token with 200 and an error body.
