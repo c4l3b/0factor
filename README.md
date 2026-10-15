@@ -1,18 +1,77 @@
 # 0factor
 
-A **zero-factor** mock OIDC provider for local development, built so coding agents can sign in.
+A mock OIDC provider for local development that coding agents can sign in to.
 
-Login is just an email address. No password, no MFA. The login page lists existing users with notes written by agents, so an agent can sign in with one click without remembering anything. URLs, discovery, tokens and realm config are **Keycloak-compatible**, so 0factor swaps in for Keycloak in dev, and it works with Aspire in one line.
+Login with an email address—no password or MFA. Pick existing users with one click; agent notes explain which account to use. Run with Aspire or Docker and connect a standard OpenID Connect client.
 
 > [!WARNING]
 > **Never use this in production.** Anyone who can reach it can sign in as anyone.
 
-> [!NOTE]
-> The container image is available on [Docker Hub](https://hub.docker.com/r/c4l3b/0factor), and the hosting package on [NuGet](https://www.nuget.org/packages/ZeroFactor.Aspire.Hosting). Publishing a [GitHub release](https://github.com/c4l3b/0factor/releases) with a `vX.Y.Z` tag builds and publishes matching image and package versions. Draft releases and tag pushes alone do not publish packages.
+[Docker Hub](https://hub.docker.com/r/c4l3b/0factor) · [NuGet](https://www.nuget.org/packages/ZeroFactor.Aspire.Hosting)
 
-[Quick start](#quick-start) · [Aspire](#aspire) · [Seed users](#seed-realms-users-and-claims) · [Tokens for tests](#tokens-for-tests) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+[Quick start](#quick-start) · [Docker](#run-with-docker) · [Aspire](#aspire) · [Keycloak migration](#replacing-keycloak) · [Seed users](#seed-realms-users-and-claims) · [Tokens for tests](#tokens-for-tests) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
 ## Quick start
+
+Add `ZeroFactor.Aspire.Hosting` to your Aspire AppHost (requires Docker):
+
+```csharp
+// dotnet add package ZeroFactor.Aspire.Hosting
+var auth = builder.AddZeroFactor("auth")
+    .WithDataVolume();
+
+builder.AddProject<Projects.Web>("web")
+    .WithReference(auth, realm: "myapp")
+    .WaitFor(auth);
+```
+
+`WithReference` supplies the issuer URL as `ConnectionStrings__auth`. Realms and clients are created on demand; no import or client registration is needed.
+
+In your ASP.NET Core web project, install `Microsoft.AspNetCore.Authentication.OpenIdConnect` matching your .NET version. In `Program.cs`:
+
+```csharp
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+    })
+    .AddCookie()
+    .AddOpenIdConnect(options =>
+    {
+        options.Authority = builder.Configuration.GetConnectionString("auth");
+        options.ClientId = "web";
+        options.ResponseType = "code";
+        options.UsePkce = true;
+        options.RequireHttpsMetadata = false; // 0factor uses HTTP locally
+    });
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapGet("/", (HttpContext context) => $"Signed in as {context.User.Identity?.Name}")
+    .RequireAuthorization();
+
+app.Run();
+```
+
+Run the AppHost and open the web app's **HTTPS** endpoint; the default OIDC cookies require it. Visiting `/` starts sign-in. Pick a user or enter an email to register. The OIDC middleware handles `/signin-oidc` and returns you to the app.
+
+The dashboard links to user management and discovery. `.WithDataVolume()` preserves users and signing keys. Keep production authentication configured separately.
+
+Run [`samples/Basic`](samples/Basic) for a home page with login, name/email display and sign-out:
+
+```bash
+aspire run --apphost samples/Basic/AppHost/BasicAppHost.csproj
+```
+
+## Run with Docker
 
 ```bash
 docker run --rm -p 8080:8080 -v zf-data:/data c4l3b/0factor:latest
@@ -28,84 +87,50 @@ Configure your app's OIDC client with:
 | Flow / scopes | Authorization code with PKCE; `openid profile email` |
 | Redirect URI | Your app's OIDC callback URL |
 
-Allow HTTP discovery for local development. With no realm import, 0factor creates the realm and accepts any client ID, redirect URI and secret.
+Allow HTTP discovery. Without an import, any realm, client ID, redirect URI and secret is accepted.
 
-Start sign-in **from your app**. Pick an existing user, or enter a new email and complete registration. Leave User ID blank to generate a `sub`, or supply the ID your development data already uses. You return to the app signed in; subsequent apps in the same realm can reuse the session.
+Start sign-in **from your app**. Pick a user or register a new email. Leave User ID blank to generate a `sub`, or enter the ID your development data uses. Apps in the same realm share the sign-in session.
 
-Open `http://localhost:8080/_0factor/` to view realms and manage users. To start with predefined accounts, [import a realm file](#seed-realms-users-and-claims).
+Manage users at `http://localhost:8080/_0factor/`, [seed accounts](#seed-realms-users-and-claims), or [get tokens without a browser](#tokens-for-tests).
 
-Get a token without a browser, for a user that already exists (register one through the login page, or [import it](#seed-realms-users-and-claims)):
-
-```bash
-curl -fsS -d grant_type=password -d client_id=myapp --data-urlencode username=alice@example.com \
-  http://localhost:8080/realms/myrealm/protocol/openid-connect/token
-```
-
-The image runs as non-root (UID 1654). The named volume preserves users and signing keys when the container is replaced. Docker examples use `:latest`; pull it again to update an existing local image. To pin a release, replace `latest` with its Git tag without the leading `v`. Aspire automatically uses the image version matching the installed hosting package.
+The image runs as non-root (UID 1654); the volume preserves users and signing keys. Pull `:latest` to update, or pin a release using its tag without the leading `v`. Aspire uses the image version matching its hosting package.
 
 ## Aspire
 
-Swap one line in the AppHost:
+`WithRealmImport` accepts a file or directory relative to the AppHost. Use `WithDataVolume()` for a named volume or `WithDataBindMount("./zf-data")` for a host directory. Health checks use `/health`.
 
-```csharp
-// dotnet add package ZeroFactor.Aspire.Hosting
-var keycloak = builder.AddZeroFactor("keycloak")    // was: builder.AddKeycloak("keycloak", 8080)
-    .WithRealmImport("./Realms")                    // same realm files Keycloak uses
-    .WithDataVolume();
-
-builder.AddProject<Projects.Web>("web")
-    .WithReference(keycloak)
-    .WaitFor(keycloak);
-```
-
-App projects keep the official `Aspire.Keycloak.Authentication` package unchanged:
-
-```csharp
-builder.Services.AddAuthentication()
-    .AddKeycloakOpenIdConnect("keycloak", realm: "shop", options => { /* ... */ });
-```
-
-[`samples/`](samples) is a runnable Aspire app (`aspire run --apphost samples/AppHost/AppHost.csproj`, needs Docker): a Razor Pages Web app that signs in with `AddKeycloakOpenIdConnect` and calls an Api protected by `AddKeycloakJwtBearer`, with a role-gated page and a claim-gated endpoint. Its AppHost differs from the Keycloak version by one line.
-
-`WithRealmImport` accepts a file or directory, relative to the AppHost directory. `WithDataVolume()` preserves data in a named Docker volume; `WithDataBindMount("./zf-data")` stores it in a host directory. The hosting package uses a matching image version and checks `/health`.
-
-Without `port`, the host port is derived from the AppHost directory and resource name, in the range 20000–29999. It stays the same across restarts, so browser cookies and the issuer survive, and AppHosts in different directories get different ports without coordination. Pass `port: 8080` to keep Keycloak's exact URL. If two AppHosts ever land on the same port, the second container fails to start; pass an explicit `port` to one of them. Browser cookies ignore the port, so give each project its own realm name to keep their sign-in sessions apart.
+The default port is derived from the AppHost directory and resource name (20000–29999), keeping the issuer stable across restarts. Set `port: 8080` to choose one explicitly or resolve a collision. Browser cookies ignore ports; use distinct realm names to separate projects' sessions.
 
 ### Issuer references and integration tests
 
-The hosting package supports Aspire **13.4.6 and later**. It sets `ZF_HOSTNAME` to the allocated host endpoint automatically, so discovery and tokens use the same issuer even when requests arrive through another address. Override it with `.WithEnvironment("ZF_HOSTNAME", "https://auth.example.test")` when using a reverse proxy.
+Requires Aspire **13.4.6+**. `ZF_HOSTNAME` is set to the host endpoint so discovery and tokens agree on the issuer. For a reverse proxy, override it with `.WithEnvironment("ZF_HOSTNAME", "https://auth.example.test")`.
 
-The endpoint is **unproxied**, whether `port` is fixed or derived. This keeps the port stable under `DistributedApplicationTestingBuilder`, which randomizes proxied host ports. For a port Aspire allocates on every run, use `AddZeroFactor(name, port: null, isProxied: true)`, and use the allocated endpoint rather than a hard-coded authority. Parallel test runs of the same AppHost need distinct fixed ports, or dynamic ports.
+The endpoint is **unproxied**, keeping its port stable under `DistributedApplicationTestingBuilder`. For dynamic ports, use `AddZeroFactor(name, port: null, isProxied: true)` and read the allocated endpoint. Parallel runs need distinct or dynamic ports.
 
 Apps using stock OIDC/JwtBearer handlers can reference the issuer directly:
 
 ```csharp
 // AppHost: also adds realm users and discovery links to the dashboard.
 builder.AddProject<Projects.Api>("api")
-    .WithReference(keycloak, realm: "shop")
-    .WaitFor(keycloak);
+    .WithReference(auth, realm: "shop")
+    .WaitFor(auth);
 
-// API: ConnectionStrings__keycloak contains the complete issuer URL.
+// API: ConnectionStrings__auth contains the complete issuer URL.
 builder.Services.AddAuthentication("Bearer").AddJwtBearer(options =>
 {
-    options.Authority = builder.Configuration.GetConnectionString("keycloak");
+    options.Authority = builder.Configuration.GetConnectionString("auth");
     options.Audience = "shop.api"; // include this in the issuing client's audience list
     options.RequireHttpsMetadata = false; // local HTTP only
 });
 ```
 
-For another setting name, use `.WithEnvironment("Auth__Authority", keycloak.GetIssuer("shop"))`. `GetIssuer` is an Aspire expression, resolved after endpoint allocation. These helpers use the host URL, so consuming apps must be able to reach that address (local project resources can). The provider always has a dashboard link to user management; realm links are added by the realm-aware `WithReference` overload. The existing `.WithReference(keycloak)` service-discovery behavior remains available.
+For another setting name, use `.WithEnvironment("Auth__Authority", auth.GetIssuer("shop"))`. The issuer resolves after endpoint allocation and uses the host URL, which consumers must be able to reach. The realm-aware `WithReference` adds dashboard links; omit the realm for service discovery alone.
 
 ## Seed realms, users and claims
 
-Save the following as `realms/shop-realm.json`. It seeds an admin with a stable user ID and adds `shop.api` to access tokens issued for `web`. `lenient: true` keeps other development clients working too.
+Save as `realms/shop-realm.json` to seed an admin and add the `shop.api` audience to `web` access tokens. `lenient: true` accepts other development clients.
 
-Any user can have:
-
-- **Realm roles** and **client roles**. Free entry; missing roles are created automatically.
-- **Extra claims:** any JSON object, merged into the access token, ID token and userinfo. Values can be strings, arrays or nested objects.
-
-Set them on the registration page, on the management page, or in the import:
+Set roles and JSON claims during registration, in user management, or in an import. Missing roles are created automatically; claims appear in access tokens, ID tokens and userinfo.
 
 ```json
 {
@@ -130,7 +155,7 @@ Set them on the registration page, on the management page, or in the import:
 }
 ```
 
-Start the container with the import directory mounted (stop the quick-start container first):
+Start the container with the import directory mounted (stop the earlier Docker container first):
 
 ```bash
 docker run --rm -p 8080:8080 -v zf-data:/data \
@@ -138,7 +163,7 @@ docker run --rm -p 8080:8080 -v zf-data:/data \
   c4l3b/0factor:latest
 ```
 
-With Aspire, use `.WithRealmImport("./realms")` instead. Imports run at startup; restart after changing a file. Imported realms default to registration disabled, so include `registrationAllowed: true` if new emails should be able to register.
+With Aspire, use `.WithRealmImport("./realms")`. Restart after changing imports. Imported realms disable registration unless `registrationAllowed: true`.
 
 For strict client validation, set `lenient` to `false` and replace the client entry with:
 
@@ -154,13 +179,13 @@ For strict client validation, set `lenient` to `false` and replace the client en
 
 Use your app's actual callback URL. A browser-only public client uses `publicClient: true` instead of a secret. Add `serviceAccountsEnabled: true` if the client needs the `client_credentials` grant.
 
-Some claim names can't be set, because they would break token validation or bypass the role fields: `iss`, `sub`, `aud`, `exp`, `iat`, `nbf`, `jti`, `auth_time`, `azp`, `typ`, `sid`, `session_state`, `nonce`, `at_hash`, `acr`, `scope`, `realm_access`, `resource_access`.
+Reserved claims (use the corresponding protocol settings or role fields): `iss`, `sub`, `aud`, `exp`, `iat`, `nbf`, `jti`, `auth_time`, `azp`, `typ`, `sid`, `session_state`, `nonce`, `at_hash`, `acr`, `scope`, `realm_access`, `resource_access`.
 
 ## Manage users
 
 Open `http://localhost:8080/_0factor/realms/shop` to edit roles, JSON claims and agent notes, or to pin, hide or delete a user. Realm roles use comma-separated names; client roles use `client:role` pairs, such as `shop.api:orders.write`.
 
-Pinned users appear first on the login page. Hidden users can still sign in by email; hiding is only a display preference. Changes affect newly issued and refreshed tokens, not tokens already issued. Imported user values may be restored on restart; see [import precedence](#import-versus-saved-data).
+Pinned users appear first; hidden users can still sign in by email. Changes apply to new and refreshed tokens. Imports may restore user values on restart; see [import precedence](#import-versus-saved-data).
 
 ## Tokens for tests
 
@@ -233,9 +258,37 @@ On every startup, 0factor loads `0factor.json`, then re-imports `*.json` files i
 - Users found only in saved data remain. An imported user's explicit ID wins over another saved user with that ID, replacing that other user.
 - A saved signing key is kept unless the import supplies one. Removing a realm file does not delete its saved realm or users. Removing a user from an import does not delete the saved user.
 
-With `WithDataVolume`, editing an import therefore updates matching users on the next start, while registered users remain. Back up the volume before changing IDs or importing another provider's users. A malformed saved file fails startup and is never overwritten.
+Back up data before changing IDs or importing another provider's users. A malformed saved file fails startup and is never overwritten.
 
 ## Keycloak compatibility
+
+URLs, discovery, token shapes and realm imports are Keycloak-compatible.
+
+### Replacing Keycloak
+
+Swap one line in the AppHost:
+
+```csharp
+// dotnet add package ZeroFactor.Aspire.Hosting
+var keycloak = builder.AddZeroFactor("keycloak")    // was: builder.AddKeycloak("keycloak", 8080)
+    .WithRealmImport("./Realms")                    // same realm files Keycloak uses
+    .WithDataVolume();
+
+builder.AddProject<Projects.Web>("web")
+    .WithReference(keycloak)
+    .WaitFor(keycloak);
+```
+
+App projects keep the official `Aspire.Keycloak.Authentication` package unchanged:
+
+```csharp
+builder.Services.AddAuthentication()
+    .AddKeycloakOpenIdConnect("keycloak", realm: "shop", options => { /* ... */ });
+```
+
+Run `aspire run --apphost samples/AppHost/AppHost.csproj` for the [Keycloak compatibility sample](samples/AppHost): OIDC sign-in, JWT-protected API calls, roles and claims.
+
+### Endpoints and tokens
 
 All endpoints live under `/realms/{realm}`, the same as Keycloak:
 
@@ -253,41 +306,36 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 | Session-status iframe | `/protocol/openid-connect/login-status-iframe.html` |
 | Third-party cookie probes | `/protocol/openid-connect/3p-cookies/step1.html` and `step2.html` |
 
-**Grants:**
-- `authorization_code`, with PKCE
-- `refresh_token`
-- `client_credentials`
-- `password` (username only; the password is ignored)
+**Grants:** `authorization_code` with PKCE, `refresh_token`, `client_credentials`, and `password`.
 
 **Tokens** use Keycloak's claim shapes: `realm_access.roles`, `resource_access.{client}.roles`, `preferred_username`, `azp`, `sid`, and audience mappers.
 
-**Realm import:** Keycloak realm-export JSON files are read from `/opt/keycloak/data/import` at startup. Unknown properties are ignored.
+**Realm import:** Keycloak exports; unknown properties are ignored.
 
 ### Known divergences from Keycloak
 
-- Optional `ZF_ISSUER` overrides the issuer independently of realm endpoint URLs, for migration from other mocks.
-
+- `ZF_ISSUER` can override the issuer independently of endpoint URLs.
+- The `password` grant ignores passwords.
 - No admin REST API, SAML, identity brokering, back-channel logout, token exchange or device flow.
 - Revocation is a no-op, and refresh tokens (and userinfo with an unexpired access token) still work after logout.
 - Logout has no confirmation page: it signs out right away and shows "You are signed out." when there is no `post_logout_redirect_uri`.
 - Refresh tokens are RS256 (Keycloak uses HS512) and stateless. Offline tokens expire after 30 days instead of never.
 - Token `scope` is the requested scopes plus `profile email`; client scopes aren't modeled. Default-role composites are fixed to Keycloak's defaults.
-- The `password` grant ignores the password.
-- `response_mode=form_post` (the ASP.NET Core default) auto-submits using a small inline script. A visible **Continue** button works without JavaScript. Login and registration use no JavaScript. Hidden session-status and cookie-probe iframes also require scripts. A proxy CSP must allow these scripts and embedding the iframes; `form_post` can fall back to Continue.
+- Login and registration need no JavaScript. `form_post` uses an auto-submit script with a **Continue** fallback. Session-status and cookie-probe iframes require scripts. Proxy CSPs must allow those scripts and iframe embedding.
 
 ### Client compatibility
 
-- **ASP.NET Core OIDC and JwtBearer** (via `Aspire.Keycloak.Authentication`): tested end to end in CI against the [`samples/`](samples) app and the real container.
-- **keycloak-js:** supports the default session-status iframe checks, including logout/account changes in other tabs. Browsers that block third-party cookies automatically disable these checks, as with Keycloak. Cross-site iframe cookies require HTTPS. Endpoint/cookie and script protocol tests cover this feature; a full browser adapter flow is not part of the automated suite. Refresh tokens still work after logout (see above).
-- **Others** (oidc-client-ts, Auth.js Keycloak provider): should work through discovery. Untested; tests welcome.
+- **ASP.NET Core:** standard OIDC tested in [`samples/Basic`](samples/Basic); OIDC and JwtBearer via `Aspire.Keycloak.Authentication` in the [compatibility sample](samples/AppHost). Both run end to end against the container.
+- **keycloak-js:** session-status checks detect logout/account changes in other tabs; blocked third-party cookies disable them. Cross-site iframe cookies require HTTPS. Endpoint and script protocols are tested; the full browser adapter flow is not.
+- **oidc-client-ts, Auth.js Keycloak provider:** expected to work through discovery; untested.
 
 ## Migrating from other mocks
 
-Applications commonly identify users by **both `(iss, sub)`**. Preserve the user IDs in your realm import and set `ZF_ISSUER` to the exact old issuer to keep those development identities, including any trailing slash. For example, when replacing a root-issuer mock:
+To preserve development identities keyed by **`(iss, sub)`**, retain user IDs in your import and set `ZF_ISSUER` to the exact old issuer, including any trailing slash:
 
 ```csharp
 // AppHost
-var keycloak = builder.AddZeroFactor("keycloak", port: 8080)
+var auth = builder.AddZeroFactor("auth", port: 8080)
     .WithEnvironment("ZF_ISSUER", "http://localhost:8080")
     .WithRealmImport("./Realms");
 
@@ -302,9 +350,9 @@ builder.Services.AddAuthentication().AddOpenIdConnect(options =>
 });
 ```
 
-For Docker, use `-e ZF_ISSUER=http://localhost:8080`. The override applies to every realm; use it with a single realm when preserving identities from another mock. Discovery stays at `/realms/{realm}/.well-known/openid-configuration` and advertises the working realm endpoints. Configure a separate metadata address in OIDC and JWT bearer clients rather than deriving it from the old authority. Aspire's `GetIssuer` and realm-aware `WithReference` return the realm URL; configure the old authority explicitly when using this override.
+For Docker, use `-e ZF_ISSUER=http://localhost:8080`. This applies to every realm; use a single realm when preserving identities. Discovery stays at `/realms/{realm}/.well-known/openid-configuration`, so configure metadata separately from the old authority. Aspire's issuer helpers return the realm URL; set the old authority explicitly.
 
-`ZF_HOSTNAME` fixes the public endpoint base URL; without `ZF_ISSUER`, the issuer is that base plus `/realms/{realm}`. A stable port prevents future issuer changes from random host ports. If you choose to change the issuer instead, migrate your application's development identity records with a backup. Update token URLs and audiences as needed, and clear old sign-in cookies and cached tokens when switching providers.
+Without `ZF_ISSUER`, the issuer is `ZF_HOSTNAME` (or the request base URL) plus `/realms/{realm}`. Keep the port stable. If changing the issuer, back up and migrate development identity records. Update token URLs and audiences, and clear old cookies and cached tokens.
 
 ### Soluto oidc-server-mock field mapping
 
@@ -340,7 +388,7 @@ Translate the [Soluto config](https://github.com/Soluto/oidc-server-mock#simple-
 }
 ```
 
-A single display name belongs in `claims.name`; `firstName` is the `given_name` claim, and `lastName` is `family_name`. Extra claims override composed profile claims in access tokens, ID tokens and userinfo.
+Extra claims override composed profile claims in access tokens, ID tokens and userinfo.
 
 ## Troubleshooting
 
@@ -352,7 +400,7 @@ A single display name belongs in `claims.name`; `firstName` is the `given_name` 
 | Direct access or service-account grant rejected | In a strict realm, enable `directAccessGrantsEnabled` or `serviceAccountsEnabled` on the client. |
 | Edited claims do not appear | Obtain a new token or refresh it. Check whether a restart re-imported the user's old values. |
 
-Data lives in `/data/0factor.json`. Back up that file before resetting it; deleting it while the server is stopped resets saved users and signing keys. Mounted realm files will seed the store again at the next start.
+To reset, stop the server and delete `/data/0factor.json` (back it up first). This removes saved users and signing keys; imports run again on startup.
 
 ## For coding agents
 
@@ -361,7 +409,7 @@ Paste this into your app's `CLAUDE.md` / `AGENTS.md`, replacing the placeholders
 ```markdown
 ## Local auth
 
-Local auth is 0factor (mock Keycloak) at http://localhost:8080, realm `<realm>`. There are no passwords.
+Local auth is 0factor (mock OIDC provider) at http://localhost:8080, realm `<realm>`. There are no passwords.
 
 - **Sign in through the app:** on the login page, click an existing user. Read the agent notes and roles to pick the right one. The return form auto-submits; if a **Continue** button stays visible, click it.
 - **Create a user:** type a new email and fill the registration form. Set roles and claims if the test needs them. Agent notes are optional; write a line saying what the user is for. Leave User ID blank unless test data already references a user ID: whatever you enter becomes the `sub` claim.
@@ -373,6 +421,8 @@ Local auth is 0factor (mock Keycloak) at http://localhost:8080, realm `<realm>`.
 ## Contributing
 
 See [AGENTS.md](AGENTS.md) for constraints, layout and commands.
+
+Publishing a [GitHub release](https://github.com/c4l3b/0factor/releases) tagged `vX.Y.Z` publishes matching image and package versions. Draft releases and tag pushes alone do not publish.
 
 ## License
 

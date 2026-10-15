@@ -23,6 +23,7 @@
     <!-- Aliased: its top-level Program would clash with the server's in WebApplicationFactory<Program>. -->
     <!-- Aliased: the AppHost's top-level Program would clash with the server's, used by WebApplicationFactory<Program>. -->
     <ProjectReference Include="..\..\samples\AppHost\AppHost.csproj" Aliases="AppHost" />
+    <ProjectReference Include="..\..\samples\Basic\AppHost\BasicAppHost.csproj" Aliases="BasicAppHost" />
     <None Include="..\fixtures\**" LinkBase="fixtures" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

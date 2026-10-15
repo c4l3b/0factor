@@ -1,0 +1,50 @@
+@page
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>0factor · Basic sample</title>
+    <style>
+        body { margin: 0; background: #faf9f6; color: #242924; font: 1.125rem/1.6 system-ui, sans-serif; }
+        main { max-width: 42rem; margin: 12vh auto; padding: 1.5rem; }
+        h1 { font-size: clamp(2rem, 7vw, 3rem); line-height: 1.15; margin: 0 0 1.5rem; }
+        p { margin: 0 0 1.5rem; }
+        .sample { color: #50594f; margin-bottom: 2rem; }
+        .button { display: inline-block; padding: .65rem 1.5rem; border-radius: .35rem; background: #294e36; color: white; font-weight: 600; text-decoration: none; }
+        .button:hover { background: #1b3825; }
+        .button:focus-visible { outline: 3px solid #294e36; outline-offset: 4px; }
+        dl { margin: 2rem 0; }
+        dt { color: #50594f; font-size: .95rem; }
+        dd { margin: 0 0 1rem; overflow-wrap: anywhere; }
+    </style>
+</head>
+<body>
+<main>
+    <p class="sample">0factor / Basic ASP.NET Core sample</p>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        var name = User.Identity.Name;
+        var email = User.FindFirst("email")?.Value;
+        <h1>You're signed in.</h1>
+        <p>Your profile came from 0factor through OpenID Connect.</p>
+        <dl data-testid="profile">
+            @if (!string.IsNullOrWhiteSpace(name))
+            {
+                <dt>Name</dt>
+                <dd data-testid="user-name">@name</dd>
+            }
+            <dt>Email</dt>
+            <dd data-testid="user-email">@(email ?? "No email provided")</dd>
+        </dl>
+        <a class="button" href="/logout" id="logout" data-testid="logout">Sign out</a>
+    }
+    else
+    {
+        <h1>A simple place to sign in.</h1>
+        <p>Log in with 0factor to see your name and email here. Pick an existing user, or enter an email to create one.</p>
+        <a class="button" href="/login" id="login" data-testid="login">Log in</a>
+    }
+</main>
+</body>
+</html>

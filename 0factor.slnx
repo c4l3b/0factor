@@ -4,6 +4,10 @@
     <Project Path="samples/AppHost/AppHost.csproj" />
     <Project Path="samples/Web/Web.csproj" />
   </Folder>
+  <Folder Name="/samples/Basic/">
+    <Project Path="samples/Basic/AppHost/BasicAppHost.csproj" />
+    <Project Path="samples/Basic/Web/BasicWeb.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/ZeroFactor.Aspire.Hosting/ZeroFactor.Aspire.Hosting.csproj" />
     <Project Path="src/ZeroFactor/ZeroFactor.csproj" />

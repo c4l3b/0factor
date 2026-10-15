@@ -1,4 +1,5 @@
 extern alias AppHost;
+extern alias BasicAppHost;
 
 using System.Net;
 using System.Net.Sockets;
@@ -19,6 +20,65 @@ public class EndToEndTests
     static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     record Page(Uri Uri, string Html);
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("Avery", "Reader")]
+    public async Task Basic_sample_shows_the_registered_email_and_optional_name(string firstName, string lastName)
+    {
+        var image = Environment.GetEnvironmentVariable("ZF_E2E_IMAGE");
+        Assert.SkipWhen(string.IsNullOrEmpty(image), "Set ZF_E2E_IMAGE to a locally built 0factor image to run the end-to-end test.");
+
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<BasicAppHost::Projects.BasicAppHost>(Ct);
+        var provider = appHost.Resources.OfType<ZeroFactorResource>().Single();
+        var endpoint = provider.Annotations.OfType<EndpointAnnotation>().Single();
+        endpoint.Port = null;
+        endpoint.IsProxied = true;
+        var container = provider.Annotations.OfType<ContainerImageAnnotation>().Single();
+        var colon = image.LastIndexOf(':');
+        container.Registry = null;
+        (container.Image, container.Tag) = colon > image.LastIndexOf('/') ? (image[..colon], image[(colon + 1)..]) : (image, "latest");
+
+        await using var app = await appHost.BuildAsync(Ct);
+        await app.StartAsync(Ct);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("auth", Ct);
+        var web = app.GetEndpoint("web", "http");
+        await Listening(web);
+
+        using var browser = new HttpClient(new HttpClientHandler { CookieContainer = new() });
+        var home = await Get(browser, web);
+        Assert.Contains("data-testid=\"login\"", home.Html);
+        Assert.DoesNotContain("data-testid=\"profile\"", home.Html);
+
+        // No import: discovery creates the realm, and the real ASP.NET OIDC handler registers this client.
+        var login = await Get(browser, new Uri(web, "/login"));
+        Assert.Contains("Sign in to basic-sample", login.Html);
+        var email = $"basic-{Guid.NewGuid():N}@example.com";
+        var register = await Read(await Submit(browser, login, "login-form", ("email", email)));
+        var callback = await Read(await Submit(browser, register, "register-form",
+            ("email", email), ("firstName", firstName), ("lastName", lastName)));
+        home = await Read(await Submit(browser, callback, "form-post"));
+
+        Assert.Equal(web.AbsolutePath, home.Uri.AbsolutePath);
+        Assert.Contains("data-testid=\"profile\"", home.Html);
+        Assert.Contains($"data-testid=\"user-email\">{email}</dd>", home.Html);
+        Assert.DoesNotContain("data-testid=\"login\"", home.Html);
+        if (firstName.Length == 0)
+            Assert.DoesNotContain("data-testid=\"user-name\"", home.Html);
+        else
+            Assert.Contains($"data-testid=\"user-name\">{firstName} {lastName}</dd>", home.Html);
+
+        // A subsequent visit uses the app's session cookie.
+        Assert.Contains(email, (await Get(browser, web)).Html);
+
+        Assert.Contains("data-testid=\"logout\"", home.Html);
+        home = await Get(browser, new Uri(web, "/logout"));
+        Assert.Contains("data-testid=\"login\"", home.Html);
+        Assert.DoesNotContain("data-testid=\"profile\"", home.Html);
+        Assert.DoesNotContain("data-testid=\"logout\"", home.Html);
+        // Ending the provider session prevents the next login from silently signing us straight back in.
+        Assert.Contains("Sign in to basic-sample", (await Get(browser, new Uri(web, "/login"))).Html);
+    }
 
     [Theory]
     [InlineData(true)]
