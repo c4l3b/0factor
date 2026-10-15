@@ -1,4 +1,7 @@
+using System.Buffers.Binary;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using Aspire.Hosting.ApplicationModel;
 
 namespace Aspire.Hosting;
@@ -20,21 +23,32 @@ public static class ZeroFactorResourceBuilderExtensions
     private const string DataDirectory = "/data";
     private const string ImportDirectory = "/opt/keycloak/data/import"; // same as Keycloak
 
-    /// <summary>Adds a 0factor container, with an unproxied endpoint when a host port is supplied.</summary>
+    /// <summary>
+    /// Adds a 0factor container with an unproxied endpoint. Without a port, the host port is derived from the
+    /// AppHost directory and resource name: stable across restarts, and different for each AppHost on the machine.
+    /// </summary>
     /// <param name="builder">The application builder.</param>
     /// <param name="name">The resource name.</param>
     /// <param name="port">The optional host port.</param>
     /// <returns>The resource builder.</returns>
     [AspireExport]
     public static IResourceBuilder<ZeroFactorResource> AddZeroFactor(this IDistributedApplicationBuilder builder, string name, int? port = null)
-        => builder.AddZeroFactor(name, port, isProxied: port is null);
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        return builder.AddZeroFactor(name, port ?? StablePort(builder.AppHostDirectory, name), isProxied: false);
+    }
+
+    // ponytail: hash into 20000-29999 with no free-port check; a rare collision fails container start, fixed by passing a port.
+    private static int StablePort(string appHostDirectory, string name)
+        => 20000 + (int)(BinaryPrimitives.ReadUInt32BigEndian(SHA256.HashData(Encoding.UTF8.GetBytes($"{appHostDirectory}\n{name}"))) % 10000);
 
     /// <summary>
     /// Adds a 0factor container to the application model. Drop-in for <c>AddKeycloak</c>.
     /// </summary>
     /// <param name="builder">The <see cref="IDistributedApplicationBuilder"/>.</param>
     /// <param name="name">The name of the resource.</param>
-    /// <param name="port">The host port. Use a stable port so browser cookies and the token issuer survive restarts.</param>
+    /// <param name="port">The host port. When null, Aspire allocates one, which can change on every run.</param>
     /// <param name="isProxied">Whether to proxy the endpoint.</param>
     /// <returns>The resource builder.</returns>
     [AspireExport("addZeroFactorWithProxy")]

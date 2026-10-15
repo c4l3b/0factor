@@ -49,8 +49,8 @@ Swap one line in the AppHost:
 
 ```csharp
 // dotnet add package ZeroFactor.Aspire.Hosting
-var keycloak = builder.AddZeroFactor("keycloak", port: 8080)   // was: builder.AddKeycloak("keycloak", 8080)
-    .WithRealmImport("./Realms")                               // same realm files Keycloak uses
+var keycloak = builder.AddZeroFactor("keycloak")    // was: builder.AddKeycloak("keycloak", 8080)
+    .WithRealmImport("./Realms")                    // same realm files Keycloak uses
     .WithDataVolume();
 
 builder.AddProject<Projects.Web>("web")
@@ -67,13 +67,15 @@ builder.Services.AddAuthentication()
 
 [`samples/`](samples) is a runnable Aspire app (`aspire run --apphost samples/AppHost/AppHost.csproj`, needs Docker): a Razor Pages Web app that signs in with `AddKeycloakOpenIdConnect` and calls an Api protected by `AddKeycloakJwtBearer`, with a role-gated page and a claim-gated endpoint. Its AppHost differs from the Keycloak version by one line.
 
-`WithRealmImport` accepts a file or directory, relative to the AppHost directory. `WithDataVolume()` preserves data in a named Docker volume; `WithDataBindMount("./zf-data")` stores it in a host directory. The hosting package uses a matching image version and checks `/health`. Use a stable port so browser cookies and the issuer survive restarts.
+`WithRealmImport` accepts a file or directory, relative to the AppHost directory. `WithDataVolume()` preserves data in a named Docker volume; `WithDataBindMount("./zf-data")` stores it in a host directory. The hosting package uses a matching image version and checks `/health`.
+
+Without `port`, the host port is derived from the AppHost directory and resource name, in the range 20000–29999. It stays the same across restarts, so browser cookies and the issuer survive, and AppHosts in different directories get different ports without coordination. Pass `port: 8080` to keep Keycloak's exact URL. If two AppHosts ever land on the same port, the second container fails to start; pass an explicit `port` to one of them. Browser cookies ignore the port, so give each project its own realm name to keep their sign-in sessions apart.
 
 ### Issuer references and integration tests
 
 The hosting package supports Aspire **13.4.6 and later**. It sets `ZF_HOSTNAME` to the allocated host endpoint automatically, so discovery and tokens use the same issuer even when requests arrive through another address. Override it with `.WithEnvironment("ZF_HOSTNAME", "https://auth.example.test")` when using a reverse proxy.
 
-With a fixed `port`, the endpoint is **unproxied** by default. This keeps the port stable under `DistributedApplicationTestingBuilder`, which randomizes proxied host ports. Without `port`, Aspire allocates a proxied port. Override either default with `isProxied: true` or `false`; use the allocated endpoint rather than a hard-coded authority when ports are dynamic. Parallel test AppHosts need distinct fixed ports, or dynamic ports.
+The endpoint is **unproxied**, whether `port` is fixed or derived. This keeps the port stable under `DistributedApplicationTestingBuilder`, which randomizes proxied host ports. For a port Aspire allocates on every run, use `AddZeroFactor(name, port: null, isProxied: true)`, and use the allocated endpoint rather than a hard-coded authority. Parallel test runs of the same AppHost need distinct fixed ports, or dynamic ports.
 
 Apps using stock OIDC/JwtBearer handlers can reference the issuer directly:
 

@@ -6,8 +6,8 @@ Aspire hosting integration for [0factor](https://github.com/c4l3b/0factor), a mo
 
 ```csharp
 // dotnet add package ZeroFactor.Aspire.Hosting
-var keycloak = builder.AddZeroFactor("keycloak", port: 8080)   // was: builder.AddKeycloak("keycloak", 8080)
-    .WithRealmImport("./Realms")                               // same realm files Keycloak uses
+var keycloak = builder.AddZeroFactor("keycloak")    // was: builder.AddKeycloak("keycloak", 8080)
+    .WithRealmImport("./Realms")                    // same realm files Keycloak uses
     .WithDataVolume();
 
 builder.AddProject<Projects.Web>("web")
@@ -28,9 +28,9 @@ builder.Services.AddAuthentication()
 | `WithRealmImport(path)` | copies files to `/opt/keycloak/data/import` |
 | `WithDataVolume(name)` / `WithDataBindMount(source)` | mounts `/data` (holds `0factor.json`) |
 
-Use a stable `port`: OIDC cookies and the token issuer include it.
+Without `port`, the host port is derived from the AppHost directory and resource name (20000–29999): stable across restarts, and different for each AppHost on the machine, so several projects can run at once without coordinating ports. Pass `port: 8080` to keep Keycloak's exact URL, or pass a port if two AppHosts ever collide.
 
-Requires Aspire 13.4.6 or later. A fixed `port` defaults to an unproxied endpoint, so Aspire integration tests keep that port. With no port, Aspire allocates a proxied port. Set `isProxied` explicitly to override. `ZF_HOSTNAME` is set automatically to the host endpoint; a later `WithEnvironment` can override it.
+Requires Aspire 13.4.6 or later. The endpoint is unproxied, so Aspire integration tests keep the port. For a port Aspire allocates on every run, use `AddZeroFactor(name, port: null, isProxied: true)`. `ZF_HOSTNAME` is set automatically to the host endpoint; a later `WithEnvironment` can override it.
 
 For apps using stock OIDC/JwtBearer handlers:
 
