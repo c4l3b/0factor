@@ -84,6 +84,22 @@ test('cookie probe signals unsupported when storage access is denied', async () 
     assert.equal(reply, 'unsupported');
 });
 
+test('web message iframe posts the authorization response to the redirect origin', () => {
+    const response = '{"code":"abc","state":"xyz","iss":"https://auth.test/realms/test"}';
+    const targetOrigin = 'https://app.test';
+    const document = { getElementById: () => ({ dataset: { response, targetOrigin } }) };
+
+    for (const via of ['opener', 'parent']) {
+        const posts = [];
+        const target = { postMessage: (...args) => posts.push(args) };
+        const window = via === 'opener' ? { opener: target, parent: {} } : { opener: null, parent: target };
+        runInNewContext(script('WebMessage'), { document, window });
+        assert.equal(posts.length, 1);
+        assert.equal(posts[0][1], targetOrigin);
+        assert.equal(JSON.stringify(posts[0][0]), `{"type":"authorization_response","response":${response}}`);
+    }
+});
+
 test('cookie probe result reports actual cookie access and cleans up', () => {
     for (const cookie of ['', 'ZF_COOKIE_PROBE=1', 'other=1; ZF_COOKIE_PROBE=1']) {
         const document = { cookie };

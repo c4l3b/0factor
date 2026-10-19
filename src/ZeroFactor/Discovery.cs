@@ -57,28 +57,7 @@ public static class Discovery
             });
         });
 
-        app.MapGet("/realms/{realm}/protocol/openid-connect/certs", (string realm, HttpContext context, Store store) =>
-        {
-            if (store.GetRealm(realm) is not { } r) return RealmNotFound();
-            Cors.AllowAnyOrigin(context);
-            var key = RealmKey.For(store, r);
-            var der = key.Certificate.RawData;
-            return Json(new JsonObject
-            {
-                ["keys"] = new JsonArray(new JsonObject
-                {
-                    ["kid"] = key.Kid,
-                    ["kty"] = "RSA",
-                    ["alg"] = "RS256",
-                    ["use"] = "sig",
-                    ["x5c"] = Array(Convert.ToBase64String(der)),
-                    ["x5t"] = Base64Url.EncodeToString(SHA1.HashData(der)),
-                    ["x5t#S256"] = Base64Url.EncodeToString(SHA256.HashData(der)),
-                    ["n"] = key.N,
-                    ["e"] = key.E,
-                }),
-            });
-        });
+        app.MapGet("/realms/{realm}/protocol/openid-connect/certs", Jwks);
 
         app.MapGet("/realms/{realm}", (string realm, HttpRequest request, Store store) =>
         {
@@ -93,6 +72,30 @@ public static class Discovery
                 ["account-service"] = realmUrl + "/account",
                 ["tokens-not-before"] = 0,
             });
+        });
+    }
+
+    /// <summary>The realm's JWKS. Shared by Keycloak's <c>/certs</c> and the Auth0-shaped <c>/.well-known/jwks.json</c>.</summary>
+    internal static IResult Jwks(string realm, HttpContext context, Store store)
+    {
+        if (store.GetRealm(realm) is not { } r) return RealmNotFound();
+        Cors.AllowAnyOrigin(context);
+        var key = RealmKey.For(store, r);
+        var der = key.Certificate.RawData;
+        return Json(new JsonObject
+        {
+            ["keys"] = new JsonArray(new JsonObject
+            {
+                ["kid"] = key.Kid,
+                ["kty"] = "RSA",
+                ["alg"] = "RS256",
+                ["use"] = "sig",
+                ["x5c"] = Array(Convert.ToBase64String(der)),
+                ["x5t"] = Base64Url.EncodeToString(SHA1.HashData(der)),
+                ["x5t#S256"] = Base64Url.EncodeToString(SHA256.HashData(der)),
+                ["n"] = key.N,
+                ["e"] = key.E,
+            }),
         });
     }
 

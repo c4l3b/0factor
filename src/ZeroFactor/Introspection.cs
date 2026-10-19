@@ -13,7 +13,7 @@ public static class Introspection
         app.MapPost("/realms/{realm}/protocol/openid-connect/revoke", Revoke);
     }
 
-    static async Task<IResult> UserInfo(string realm, HttpContext context, Store store)
+    internal static async Task<IResult> UserInfo(string realm, HttpContext context, Store store)
     {
         if (store.GetRealm(realm) is not { } r) return Discovery.RealmNotFound();
         var request = context.Request;

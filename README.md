@@ -336,7 +336,21 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 - Logout has no confirmation page: it signs out right away and shows "You are signed out." when there is no `post_logout_redirect_uri`.
 - Refresh tokens are RS256 (Keycloak uses HS512) and stateless. Offline tokens expire after 30 days instead of never.
 - Token `scope` is the requested scopes plus `profile email`; client scopes aren't modeled. Default-role composites are fixed to Keycloak's defaults.
-- Login and registration need no JavaScript. `form_post` uses an auto-submit script with a **Continue** fallback. Session-status and cookie-probe iframes require scripts. Proxy CSPs must allow those scripts and iframe embedding.
+- Login and registration need no JavaScript. `form_post` uses an auto-submit script with a **Continue** fallback. The web_message, session-status and cookie-probe iframes require scripts. Proxy CSPs must allow those scripts and iframe embedding.
+
+### Auth0 (auth0-spa-js) compatibility
+
+0factor also serves Auth0-shaped routes under the realm, so `@auth0/auth0-spa-js` (and `@auth0/auth0-angular`) can use it unchanged: point the SDK's `domain` and `issuer` at `{base}/realms/{realm}` over **https** — auth0-spa-js only trusts a custom `issuer` verbatim when it starts with `https://` (an `http://` issuer is rewritten to `https://…/` and won't match), so serve 0factor with Aspire's trusted dev certificate. (HTTP-only alternative: leave `issuer` unset and set `ZF_ISSUER` to `{base}/realms/{realm}/` — trailing slash — so the realm's issuer matches auth0-spa-js's domain-plus-slash default.) Seed each user's `id` to the `sub` your app expects, with any namespaced claims under `claims`.
+
+| Auth0 request | 0factor |
+|---|---|
+| `GET …/authorize` | auth-code + PKCE; the `audience` parameter sets the access-token `aud`; `response_mode=web_message` for silent iframe auth |
+| `POST …/oauth/token` | `authorization_code` and `refresh_token`, JSON or form body |
+| `GET …/.well-known/jwks.json` | the realm JWKS (same key as `…/protocol/openid-connect/certs`) |
+| `GET …/userinfo` | the realm userinfo |
+| `GET …/v2/logout` | `returnTo` maps to `post_logout_redirect_uri`; `client_id` as-is |
+
+`getTokenSilently` renews tokens silently through a hidden iframe via the `web_message` response mode, so refresh tokens are not required. The Auth0 Management API and Actions/Rules are out of scope — per-user claims come from the seed realm.
 
 ### Client compatibility
 

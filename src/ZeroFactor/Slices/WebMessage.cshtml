@@ -1,0 +1,11 @@
+@inherits RazorSlice<WebMessageModel>
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Authorization response</title></head><body>
+<div id="authorization-response" data-testid="web-message" data-response="@Model.ResponseJson" data-target-origin="@Model.TargetOrigin"></div>
+<script>
+    var el = document.getElementById("authorization-response");
+    (window.opener || window.parent).postMessage(
+        { type: "authorization_response", response: JSON.parse(el.dataset.response) },
+        el.dataset.targetOrigin);
+</script>
+</body></html>

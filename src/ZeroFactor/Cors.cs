@@ -11,11 +11,13 @@ public static class Cors
 
     public static void MapCorsPreflight(this WebApplication app)
     {
+        // Keycloak public + OIDC endpoints, plus the Auth0-shaped aliases the browser SDK preflights.
         (string Path, string Methods)[] endpoints =
         [
             (Oidc + "token", "GET, POST, OPTIONS"), (Oidc + "userinfo", "GET, POST, OPTIONS"),
             (Oidc + "logout", "GET, POST, OPTIONS"), (Oidc + "revoke", "GET, POST, OPTIONS"),
             ("/realms/{realm}/.well-known/openid-configuration", "GET"), (Oidc + "certs", "GET"), ("/realms/{realm}", "GET, HEAD, OPTIONS"),
+            ("/realms/{realm}/oauth/token", "GET, POST, OPTIONS"), ("/realms/{realm}/userinfo", "GET, POST, OPTIONS"), ("/realms/{realm}/v2/logout", "GET, POST, OPTIONS"),
         ];
         foreach (var (path, methods) in endpoints)
             app.MapMethods(path, ["OPTIONS"], (HttpContext context) =>
@@ -25,7 +27,8 @@ public static class Cors
                 headers.AccessControlAllowOrigin = origin;
                 headers.AccessControlAllowCredentials = "true";
                 headers.AccessControlAllowMethods = methods;
-                headers.AccessControlAllowHeaders = "Origin, Accept, X-Requested-With, Content-Type, Authorization, DPoP";
+                // Auth0-Client is sent by @auth0/auth0-spa-js; the Auth0-shaped routes' preflight fails unless it is allowed.
+                headers.AccessControlAllowHeaders = "Origin, Accept, X-Requested-With, Content-Type, Authorization, DPoP, Auth0-Client";
                 headers.AccessControlMaxAge = "3600";
                 headers.Vary = "Origin";
                 return Results.Ok();

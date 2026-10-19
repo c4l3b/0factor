@@ -217,6 +217,40 @@ public sealed class AuthorizeTests : IDisposable
     }
 
     [Fact]
+    public async Task Web_message_mode_posts_the_code_or_login_required_to_the_redirect_origin()
+    {
+        var client = Browser(Start());
+        await SignIn(client, Request, "alice@example.com");
+
+        // Silent renewal: prompt=none with the SSO session returns a page that postMessages the code to the redirect origin.
+        var silent = await client.GetAsync(Auth("test", Request.Replace("s1", "s2") + "&response_mode=web_message&prompt=none"), Ct);
+        Assert.Equal(HttpStatusCode.OK, silent.StatusCode);
+        Assert.Equal("text/html", silent.Content.Headers.ContentType?.MediaType);
+        var okHtml = await silent.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("\"authorization_response\"", okHtml);
+        Assert.Contains(".postMessage(", okHtml);
+        Assert.Equal("http://app.test", TargetOrigin(okHtml));
+        var ok = WebMessageResponse(okHtml);
+        Assert.Equal("s2", (string?)ok["state"]);
+        Assert.Equal(Issuer, (string?)ok["iss"]);
+        Assert.NotNull((string?)ok["code"]);
+        Assert.NotNull((string?)ok["session_state"]);
+
+        // No session: login_required is delivered the same way (an HTML page), not as a redirect.
+        var none = await Browser(Start()).GetAsync(Auth("test", Request + "&response_mode=web_message&prompt=none"), Ct);
+        Assert.Equal(HttpStatusCode.OK, none.StatusCode);
+        var error = WebMessageResponse(await none.Content.ReadAsStringAsync(Ct));
+        Assert.Equal("login_required", (string?)error["error"]);
+        Assert.Equal("s1", (string?)error["state"]);
+    }
+
+    static JsonObject WebMessageResponse(string html) =>
+        (JsonObject)JsonNode.Parse(WebUtility.HtmlDecode(Regex.Match(html, "data-response=\"([^\"]*)\"").Groups[1].Value))!;
+
+    static string TargetOrigin(string html) =>
+        WebUtility.HtmlDecode(Regex.Match(html, "data-target-origin=\"([^\"]*)\"").Groups[1].Value);
+
+    [Fact]
     public async Task Code_is_single_use_and_bound_to_the_request()
     {
         var factory = Start();
