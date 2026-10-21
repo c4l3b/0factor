@@ -21,19 +21,36 @@ public sealed class CorsTests : IDisposable
     }
 
     [Theory]
-    [InlineData("token")]
-    [InlineData("userinfo")]
-    [InlineData("logout")]
-    [InlineData("revoke")]
-    public async Task Preflight_is_answered_for_any_origin(string endpoint)
+    [InlineData(Oidc + "token")]
+    [InlineData(Oidc + "userinfo")]
+    [InlineData(Oidc + "logout")]
+    [InlineData(Oidc + "revoke")]
+    [InlineData(Oidc + "certs")]
+    [InlineData("/realms/test/.well-known/openid-configuration")]
+    [InlineData("/realms/test")]
+    public async Task Preflight_is_answered_for_any_origin(string path)
     {
-        var request = new HttpRequestMessage(HttpMethod.Options, Oidc + endpoint);
+        var request = new HttpRequestMessage(HttpMethod.Options, path);
         request.Headers.Add("Origin", "http://localhost:5173");
         request.Headers.Add("Access-Control-Request-Method", "POST");
         var response = await factory.CreateClient().SendAsync(request, Ct);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("http://localhost:5173", response.Headers.GetValues("Access-Control-Allow-Origin").Single());
         Assert.Contains("Authorization", response.Headers.GetValues("Access-Control-Allow-Headers").Single());
+    }
+
+    [Theory]
+    [InlineData("/realms/test/.well-known/openid-configuration")]
+    [InlineData(Oidc + "certs")]
+    [InlineData("/realms/test")]
+    public async Task Public_endpoints_allow_any_origin(string path)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Add("Origin", "http://localhost:5173");
+        var response = await factory.CreateClient().SendAsync(request, Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("http://localhost:5173", response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        Assert.Equal("true", response.Headers.GetValues("Access-Control-Allow-Credentials").Single());
     }
 
     [Fact]

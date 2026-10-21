@@ -29,6 +29,7 @@ public static class Discovery
         app.MapGet("/realms/{realm}/.well-known/openid-configuration", (string realm, HttpRequest request, Store store) =>
         {
             if (store.GetRealm(realm) is null) return RealmNotFound();
+            Cors.AllowAnyOrigin(request.HttpContext);
             var issuer = Issuer(request, realm);
             var oidc = RealmUrl(request, realm) + "/protocol/openid-connect";
             return Json(new JsonObject
@@ -56,9 +57,10 @@ public static class Discovery
             });
         });
 
-        app.MapGet("/realms/{realm}/protocol/openid-connect/certs", (string realm, Store store) =>
+        app.MapGet("/realms/{realm}/protocol/openid-connect/certs", (string realm, HttpContext context, Store store) =>
         {
             if (store.GetRealm(realm) is not { } r) return RealmNotFound();
+            Cors.AllowAnyOrigin(context);
             var key = RealmKey.For(store, r);
             var der = key.Certificate.RawData;
             return Json(new JsonObject
@@ -81,6 +83,7 @@ public static class Discovery
         app.MapGet("/realms/{realm}", (string realm, HttpRequest request, Store store) =>
         {
             if (store.GetRealm(realm) is not { } r) return RealmNotFound();
+            Cors.AllowAnyOrigin(request.HttpContext);
             var realmUrl = RealmUrl(request, realm);
             return Json(new JsonObject
             {

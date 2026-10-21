@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting" Version="13.4.6" />
+    <!-- Aspire.Hosting 13.4.6 pulls MessagePack 2.5.302 (GHSA-qhrr-8q5h-9q3h). -->
+    <PackageReference Include="MessagePack" Version="2.5.303" />
     <AssemblyMetadata Include="ZeroFactorImageTag" Value="$(Version)" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
