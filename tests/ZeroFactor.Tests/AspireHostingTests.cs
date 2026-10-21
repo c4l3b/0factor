@@ -1,5 +1,9 @@
+#pragma warning disable ASPIRECERTIFICATES001 // Aspire certificate APIs are experimental
 using Aspire.Hosting;
+using System.Collections.Immutable;
+using System.Security.Cryptography.X509Certificates;
 using Aspire.Hosting.ApplicationModel;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ZeroFactor.Tests;
 
@@ -88,6 +92,64 @@ public class AspireHostingTests
         Assert.Single(urls, u => u.Url.EndsWith("/_0factor/realms/shop"));
         var discovery = Assert.Single(urls, u => u.Url.EndsWith("/realms/shop/.well-known/openid-configuration"));
         Assert.Equal("shop discovery", discovery.DisplayText);
+    }
+
+    [Theory]
+    [InlineData(true, false, "https")]  // trusted developer certificate: HTTPS by default
+    [InlineData(false, false, "http")]  // no trusted certificate: HTTP as before
+    [InlineData(true, true, "http")]    // WithoutHttpsCertificate opts out
+    public async Task Https_follows_the_Aspire_developer_certificate(bool useForHttps, bool optOut, string scheme)
+    {
+        var builder = DistributedApplication.CreateBuilder();
+        var oidc = builder.AddZeroFactor("auth", port: 7281);
+        if (optOut) oidc.WithoutHttpsCertificate();
+        var consumer = builder.AddExecutable("consumer", "unused", ".").WithReference(oidc, realm: "shop");
+        builder.Services.AddSingleton<IDeveloperCertificateService>(new DevCerts(useForHttps));
+        builder.Configuration["DcpPublisher:CliPath"] = "unused"; // Build validates these; nothing is started.
+        builder.Configuration["DcpPublisher:DashboardPath"] = "unused";
+        using var app = builder.Build();
+        await builder.Eventing.PublishAsync(new BeforeStartEvent(app.Services, app.Services.GetRequiredService<DistributedApplicationModel>()), TestContext.Current.CancellationToken);
+
+        var endpoint = oidc.Resource.Annotations.OfType<EndpointAnnotation>().Single();
+        Assert.Equal(("http", scheme, 7281, 8080), (endpoint.Name, endpoint.UriScheme, endpoint.Port, endpoint.TargetPort));
+        endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "localhost", 7281);
+        Assert.Equal($"{scheme}://localhost:7281", (await Environment(oidc.Resource, builder))["ZF_HOSTNAME"]);
+        Assert.Equal($"{scheme}://localhost:7281/realms/shop", (await Environment(consumer.Resource, builder))["ConnectionStrings__auth"]);
+    }
+
+    sealed class DevCerts(bool useForHttps) : IDeveloperCertificateService
+    {
+        public ImmutableList<X509Certificate2> Certificates => [];
+        public bool SupportsContainerTrust => true;
+        public bool UseForHttps => useForHttps;
+        public bool TrustCertificate => useForHttps;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Certificate_is_served_by_Kestrel_on_the_container_port(bool password)
+    {
+        var builder = DistributedApplication.CreateBuilder();
+        var oidc = builder.AddZeroFactor("auth");
+        var env = new Dictionary<string, object>();
+        var context = new HttpsCertificateConfigurationCallbackAnnotationContext
+        {
+            ExecutionContext = builder.ExecutionContext, Resource = oidc.Resource, Arguments = [], EnvironmentVariables = env,
+            CertificatePath = ReferenceExpression.Create($"/certs/cert.pem"), KeyPath = ReferenceExpression.Create($"/certs/key.pem"),
+            CertificateWithKeyPath = ReferenceExpression.Create($"/certs/both.pem"), PfxPath = ReferenceExpression.Create($"/certs/cert.pfx"),
+            Password = password ? ReferenceExpression.Create($"secret") : null, CancellationToken = TestContext.Current.CancellationToken,
+        };
+        await Assert.Single(oidc.Resource.Annotations.OfType<HttpsCertificateConfigurationCallbackAnnotation>()).Callback(context);
+
+        var values = new Dictionary<string, string?>();
+        foreach (var (name, value) in env)
+            values[name] = value is IValueProvider provider ? await provider.GetValueAsync(TestContext.Current.CancellationToken) : (string)value;
+        const string prefix = "Kestrel__Endpoints__https__";
+        Assert.Equal("https://*:8080", values[prefix + "Url"]);
+        Assert.Equal(password ? "/certs/cert.pfx" : "/certs/cert.pem", values[prefix + "Certificate__Path"]);
+        Assert.Equal(password ? null : "/certs/key.pem", values.GetValueOrDefault(prefix + "Certificate__KeyPath"));
+        Assert.Equal(password ? "secret" : null, values.GetValueOrDefault(prefix + "Certificate__Password"));
     }
 
     static async Task<Dictionary<string, string?>> Environment(IResource resource, IDistributedApplicationBuilder builder)

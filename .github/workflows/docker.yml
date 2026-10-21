@@ -16,10 +16,10 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            baseline: 25666893 # uncompressed bytes, measured for #10
+            baseline: 28588456 # uncompressed bytes, measured for #10; +2.9 MB for Kestrel HTTPS (#23)
           - arch: arm64
             runner: ubuntu-24.04-arm
-            baseline: 24434920
+            baseline: 27557448
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read

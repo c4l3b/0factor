@@ -47,7 +47,7 @@ builder.Services.AddAuthentication(options =>
         options.ClientId = "web";
         options.ResponseType = "code";
         options.UsePkce = true;
-        options.RequireHttpsMetadata = false; // 0factor uses HTTP locally
+        options.RequireHttpsMetadata = false; // 0factor is HTTP without a trusted dev certificate
     });
 builder.Services.AddAuthorization();
 
@@ -100,6 +100,21 @@ The image runs as non-root (UID 1654); the volume preserves users and signing ke
 `WithRealmImport` accepts a file or directory relative to the AppHost. Use `WithDataVolume()` for a named volume or `WithDataBindMount("./zf-data")` for a host directory. Health checks use `/health`.
 
 The default port is derived from the AppHost directory and resource name (20000–29999), keeping the issuer stable across restarts. Set `port: 8080` to choose one explicitly or resolve a collision. Browser cookies ignore ports; use distinct realm names to separate projects' sessions.
+
+### HTTPS
+
+Like Aspire's Keycloak, 0factor serves HTTPS when Aspire has a trusted ASP.NET Core developer certificate (`dotnet dev-certs https --trust`, which `aspire run` offers to do). The endpoint keeps its name (`http`) and port, so `AddZeroFactor("auth", port: 7281)` becomes `https://localhost:7281`. The issuer, `ZF_HOSTNAME`, `GetIssuer` and `WithReference` follow automatically. Without a trusted certificate it stays HTTP.
+
+Over HTTPS the session cookies are `SameSite=None; Secure`, like Keycloak's `KEYCLOAK_IDENTITY` and `KEYCLOAK_SESSION`, so session-status iframes and `prompt=none` renewals work from HTTPS apps such as Blazor WebAssembly with oidc-client. Over HTTP they stay `SameSite=Lax`.
+
+To stay on HTTP, use the same opt-out as Keycloak:
+
+```csharp
+var auth = builder.AddZeroFactor("auth", port: 7281)
+    .WithoutHttpsCertificate(); // http://localhost:7281
+```
+
+The Docker image alone serves HTTP. For HTTPS without Aspire, set `Kestrel__Endpoints__https__Url=https://*:8080` and `Kestrel__Endpoints__https__Certificate__Path`/`__KeyPath` (PEM files).
 
 ### Issuer references and integration tests
 
@@ -326,7 +341,7 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 ### Client compatibility
 
 - **ASP.NET Core:** standard OIDC tested in [`samples/Basic`](samples/Basic); OIDC and JwtBearer via `Aspire.Keycloak.Authentication` in the [compatibility sample](samples/AppHost). Both run end to end against the container.
-- **keycloak-js:** session-status checks detect logout/account changes in other tabs; blocked third-party cookies disable them. Cross-site iframe cookies require HTTPS. Endpoint and script protocols are tested; the full browser adapter flow is not.
+- **keycloak-js:** session-status checks detect logout/account changes in other tabs; blocked third-party cookies disable them. Cross-site iframe cookies require [HTTPS](#https). Endpoint and script protocols are tested; the full browser adapter flow is not.
 - **oidc-client-ts, Auth.js Keycloak provider:** expected to work through discovery; untested.
 
 ## Migrating from other mocks

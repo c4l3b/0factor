@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.HttpOverrides;
 using ZeroFactor;
 
 var builder = WebApplication.CreateSlimBuilder(args);
+// HTTPS only when Kestrel:Endpoints configures one (Aspire does with a trusted dev certificate); otherwise plain HTTP on ASPNETCORE_HTTP_PORTS.
+builder.WebHost.UseKestrelHttpsConfiguration();
 
 // Opened before Build so a corrupt data file or realm import fails startup loudly.
 var config = builder.Configuration;

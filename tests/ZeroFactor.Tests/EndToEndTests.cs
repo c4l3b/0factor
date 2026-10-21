@@ -45,7 +45,7 @@ public class EndToEndTests
         var web = app.GetEndpoint("web", "http");
         await Listening(web);
 
-        using var browser = new HttpClient(new HttpClientHandler { CookieContainer = new() });
+        using var browser = new HttpClient(new Browser());
         var home = await Get(browser, web);
         Assert.Contains("data-testid=\"login\"", home.Html);
         Assert.DoesNotContain("data-testid=\"profile\"", home.Html);
@@ -120,7 +120,7 @@ public class EndToEndTests
         await Listening(web);
         await Listening(api);
 
-        var browser = new HttpClient(new HttpClientHandler { CookieContainer = new() });
+        var browser = new HttpClient(new Browser());
         var email = $"e2e-{Guid.NewGuid():N}@example.com";
         const string notes = "Created by the end-to-end test.";
 
@@ -163,6 +163,21 @@ public class EndToEndTests
         var refreshed = await Post(tokenEndpoint, [.. client, ("grant_type", "refresh_token"), ("refresh_token", (string)tokens["refresh_token"]!)]);
         Assert.NotEqual((string?)tokens["access_token"], (string?)refreshed["access_token"]);
         Assert.Equal(HttpStatusCode.OK, await CallApi(api, "/tenant", refreshed));
+    }
+
+    /// <summary>
+    /// Follows redirects like a browser. HttpClient refuses https-to-http redirects, which happen once 0factor serves
+    /// Aspire's trusted developer certificate while the sample apps stay on HTTP.
+    /// </summary>
+    sealed class Browser() : DelegatingHandler(new HttpClientHandler { CookieContainer = new(), AllowAutoRedirect = false })
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var response = await base.SendAsync(request, cancellationToken);
+            for (var i = 0; i < 10 && response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther; i++)
+                response = await base.SendAsync(new HttpRequestMessage(HttpMethod.Get, new Uri(response.RequestMessage!.RequestUri!, response.Headers.Location!)), cancellationToken);
+            return response;
+        }
     }
 
     /// <summary>Project resources have no health check; wait until Kestrel answers.</summary>
