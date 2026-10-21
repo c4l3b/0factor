@@ -24,9 +24,10 @@ builder.Services.AddAuthentication()
 
 | Method | Container |
 |---|---|
-| `AddZeroFactor(name, port)` | `docker.io/c4l3b/0factor:<package version>`, endpoint `http` → 8080, health check `/health` |
+| `AddZeroFactor(name, port)` | `docker.io/c4l3b/0factor:<package version>`, endpoint `http` → 8080 (HTTPS with a trusted dev certificate), health check `/health` |
 | `WithRealmImport(path)` | copies files to `/opt/keycloak/data/import` |
 | `WithDataVolume(name)` / `WithDataBindMount(source)` | mounts `/data` (holds `0factor.json`) |
+| `WithoutHttpsCertificate()` | stays on HTTP. By default the endpoint serves HTTPS when Aspire has a trusted ASP.NET Core developer certificate, like Keycloak; issuer and references follow, session cookies become `SameSite=None; Secure` |
 
 Without `port`, the host port is derived from the AppHost directory and resource name (20000–29999): stable across restarts, and different for each AppHost on the machine, so several projects can run at once without coordinating ports. Pass `port: 8080` to keep Keycloak's exact URL, or pass a port if two AppHosts ever collide.
 

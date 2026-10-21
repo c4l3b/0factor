@@ -72,7 +72,7 @@ public sealed class SessionIframeTests : IDisposable
     [Theory]
     [InlineData("http", "lax", false)]
     [InlineData("https", "none", true)]
-    public async Task Status_cookie_tracks_the_signed_session_and_is_cleared_with_it(string scheme, string sameSite, bool secure)
+    public async Task Session_cookies_are_SameSite_None_Secure_over_https_and_track_the_signed_session(string scheme, string sameSite, bool secure)
     {
         var browser = factory.CreateClient(new() { BaseAddress = new Uri($"{scheme}://localhost"), AllowAutoRedirect = false });
         var store = factory.Services.GetRequiredService<Store>();
@@ -87,8 +87,8 @@ public sealed class SessionIframeTests : IDisposable
         Assert.Equal(sid, status.Value.ToString());
         Assert.False(status.HttpOnly);
         Assert.True(auth.HttpOnly);
-        Assert.Equal(secure, status.Secure);
-        Assert.Equal(sameSite, status.SameSite.ToString().ToLowerInvariant());
+        Assert.All([status, auth], c => Assert.Equal(secure, c.Secure));
+        Assert.All([status, auth], c => Assert.Equal(sameSite, c.SameSite.ToString().ToLowerInvariant()));
         Assert.Equal("/realms/test/", status.Path.ToString());
         var token = Jwt.Validate(RealmKey.For(store, realm), auth.Value.ToString(), $"{scheme}://localhost/realms/test")!;
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds((long)token["exp"]!), status.Expires);

@@ -244,7 +244,8 @@ public static class Authorize
         {
             Path = CookiePath(context, realm),
             HttpOnly = true,
-            SameSite = SameSiteMode.Lax,
+            // Like KEYCLOAK_IDENTITY: None so prompt=none works in cross-site iframes, Lax over HTTP where None needs Secure.
+            SameSite = context.Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
             Secure = context.Request.IsHttps,
         });
     }

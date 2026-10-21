@@ -67,7 +67,46 @@ public static class ZeroFactorResourceBuilderExtensions
             .WithUrlForEndpoint(ZeroFactorResource.PrimaryEndpointName, ep => new() { Url = "/_0factor/", DisplayText = "Users" });
 
         // Issuers must use the browser-facing address, even when resolved inside the provider container.
-        return resource.WithEnvironment("ZF_HOSTNAME", resource.GetEndpoint(ZeroFactorResource.PrimaryEndpointName, KnownNetworkIdentifiers.LocalhostNetwork));
+        resource.WithEnvironment("ZF_HOSTNAME", resource.GetEndpoint(ZeroFactorResource.PrimaryEndpointName, KnownNetworkIdentifiers.LocalhostNetwork));
+
+#pragma warning disable ASPIRECERTIFICATES001 // experimental in Aspire 13.4
+        // HTTPS like Aspire's Keycloak: when Aspire has a trusted developer certificate (or one is configured), Kestrel serves it
+        // on the same container port, replacing the image's ASPNETCORE_HTTP_PORTS listener. Otherwise plain HTTP as before.
+        resource.WithHttpsCertificateConfiguration(ctx =>
+        {
+            const string endpoint = "Kestrel__Endpoints__https__";
+            ctx.EnvironmentVariables[endpoint + "Url"] = $"https://*:{DefaultContainerPort}";
+            if (ctx.Password is null)
+            {
+                ctx.EnvironmentVariables[endpoint + "Certificate__Path"] = ctx.CertificatePath;
+                ctx.EnvironmentVariables[endpoint + "Certificate__KeyPath"] = ctx.KeyPath;
+            }
+            else
+            {
+                ctx.EnvironmentVariables[endpoint + "Certificate__Path"] = ctx.PfxPath;
+                ctx.EnvironmentVariables[endpoint + "Certificate__Password"] = ctx.Password;
+            }
+            return Task.CompletedTask;
+        });
+        if (builder.ExecutionContext.IsRunMode)
+            resource.SubscribeHttpsEndpointsUpdate(_ => resource.WithEndpoint(ZeroFactorResource.PrimaryEndpointName, ep => ep.UriScheme = "https"));
+#pragma warning restore ASPIRECERTIFICATES001
+        return resource;
+    }
+
+    /// <summary>
+    /// Keeps 0factor on plain HTTP even when Aspire has a trusted developer certificate. Same name and effect as Aspire's
+    /// <c>WithoutHttpsCertificate</c>, without its experimental-API warning.
+    /// </summary>
+    /// <param name="builder">The resource builder.</param>
+    /// <returns>The resource builder.</returns>
+    [AspireExportIgnore(Reason = "Aspire exports the generic WithoutHttpsCertificate.")]
+    public static IResourceBuilder<ZeroFactorResource> WithoutHttpsCertificate(this IResourceBuilder<ZeroFactorResource> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+#pragma warning disable ASPIRECERTIFICATES001
+        return ResourceBuilderExtensions.WithoutHttpsCertificate(builder);
+#pragma warning restore ASPIRECERTIFICATES001
     }
 
     /// <summary>Returns the realm issuer using the host endpoint, resolved after port allocation.</summary>
