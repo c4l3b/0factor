@@ -31,7 +31,7 @@ builder.Services.AddAuthentication()
 
 Without `port`, the host port is derived from the AppHost directory and resource name (20000–29999): stable across restarts, and different for each AppHost on the machine, so several projects can run at once without coordinating ports. Pass `port: 8080` to keep Keycloak's exact URL, or pass a port if two AppHosts ever collide.
 
-Requires Aspire 13.4.6 or later. The endpoint is unproxied, so Aspire integration tests keep the port. For a port Aspire allocates on every run, use `AddZeroFactor(name, port: null, isProxied: true)`. `ZF_HOSTNAME` is set automatically to the host endpoint; a later `WithEnvironment` can override it.
+Requires Aspire 13.6.5 or later. The endpoint is unproxied, so Aspire integration tests keep the port. For a port Aspire allocates on every run, use `AddZeroFactor(name, port: null, isProxied: true)`. `ZF_HOSTNAME` is set automatically to the host endpoint; a later `WithEnvironment` can override it.
 
 For apps using stock OIDC/JwtBearer handlers:
 
@@ -43,5 +43,16 @@ builder.AddProject<Projects.Web>("web")
 ```
 
 This adds realm users and discovery links to the dashboard. The provider also links to user management. For a custom environment setting, use `.WithEnvironment("Auth__Authority", keycloak.GetIssuer("shop"))`. Issuer references resolve to the allocated host address, intended for local project consumers.
+
+TypeScript (polyglot) AppHosts can use the package too. `aspire add` only lists `Aspire.Hosting.*` and `CommunityToolkit.Aspire.Hosting.*` packages, so add it to `aspire.config.json` by hand and run `aspire restore`:
+
+```json
+{ "packages": { "ZeroFactor.Aspire.Hosting": "<version>" } }
+```
+
+```ts
+const keycloak = await builder.addZeroFactor("keycloak");
+await builder.addProject("web", "../Web/Web.csproj").withZeroFactorReference(keycloak, "shop");
+```
 
 See the [main README](https://github.com/c4l3b/0factor#import-versus-saved-data) for import precedence, explicit realm leniency, audience shorthand and migration from other mocks.
