@@ -348,9 +348,11 @@ All endpoints live under `/realms/{realm}`, the same as Keycloak:
 | `POST …/oauth/token` | `authorization_code` and `refresh_token`, JSON or form body |
 | `GET …/.well-known/jwks.json` | the realm JWKS (same key as `…/protocol/openid-connect/certs`) |
 | `GET …/userinfo` | the realm userinfo |
-| `GET …/v2/logout` | `returnTo` maps to `post_logout_redirect_uri`; `client_id` as-is |
+| `GET …/v2/logout` | `returnTo` maps to `post_logout_redirect_uri`; `client_id` as-is; GET only |
 
-`getTokenSilently` renews tokens silently through a hidden iframe via the `web_message` response mode, so refresh tokens are not required. The Auth0 Management API and Actions/Rules are out of scope — per-user claims come from the seed realm.
+`getTokenSilently` renews tokens silently through a hidden iframe via the `web_message` response mode, so refresh tokens are not required. `web_message` needs an absolute `http`/`https` `redirect_uri`, since its origin is the `postMessage` target.
+
+`audience` and `response_mode=web_message` work only on `…/authorize`. The Keycloak endpoint `…/protocol/openid-connect/auth` ignores `audience` and rejects `web_message`, as Keycloak does, so an app tested against 0factor's Keycloak paths still needs a real audience mapper. Any `audience` value is accepted; Auth0 only issues tokens for a registered API. The Auth0 Management API and Actions/Rules are out of scope — per-user claims come from the seed realm.
 
 ### Client compatibility
 

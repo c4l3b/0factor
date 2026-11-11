@@ -223,7 +223,7 @@ public sealed class AuthorizeTests : IDisposable
         await SignIn(client, Request, "alice@example.com");
 
         // Silent renewal: prompt=none with the SSO session returns a page that postMessages the code to the redirect origin.
-        var silent = await client.GetAsync(Auth("test", Request.Replace("s1", "s2") + "&response_mode=web_message&prompt=none"), Ct);
+        var silent = await client.GetAsync(Auth0Authorize("test", Request.Replace("s1", "s2") + "&response_mode=web_message&prompt=none"), Ct);
         Assert.Equal(HttpStatusCode.OK, silent.StatusCode);
         Assert.Equal("text/html", silent.Content.Headers.ContentType?.MediaType);
         var okHtml = await silent.Content.ReadAsStringAsync(Ct);
@@ -237,12 +237,14 @@ public sealed class AuthorizeTests : IDisposable
         Assert.NotNull((string?)ok["session_state"]);
 
         // No session: login_required is delivered the same way (an HTML page), not as a redirect.
-        var none = await Browser(Start()).GetAsync(Auth("test", Request + "&response_mode=web_message&prompt=none"), Ct);
+        var none = await Browser(Start()).GetAsync(Auth0Authorize("test", Request + "&response_mode=web_message&prompt=none"), Ct);
         Assert.Equal(HttpStatusCode.OK, none.StatusCode);
         var error = WebMessageResponse(await none.Content.ReadAsStringAsync(Ct));
         Assert.Equal("login_required", (string?)error["error"]);
         Assert.Equal("s1", (string?)error["state"]);
     }
+
+    static string Auth0Authorize(string realm, string query) => $"/realms/{realm}/authorize?{query}";
 
     static JsonObject WebMessageResponse(string html) =>
         (JsonObject)JsonNode.Parse(WebUtility.HtmlDecode(Regex.Match(html, "data-response=\"([^\"]*)\"").Groups[1].Value))!;

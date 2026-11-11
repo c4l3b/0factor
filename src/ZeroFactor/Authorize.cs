@@ -42,18 +42,21 @@ public static class Authorize
 {
     const string SessionCookie = "ZF_SESSION";
     const int LoginLifespan = 1800; // Keycloak's accessCodeLifespanLogin default.
-    // `audience` is Auth0's parameter for the target API; carried through login so the token endpoint can set the access-token aud.
+    // `audience` is Auth0's parameter for the target API, honored on the Auth0 route only; carried through login so the token
+    // endpoint can set the access-token aud.
     static readonly string[] carried = ["client_id", "redirect_uri", "response_type", "scope", "state", "nonce", "code_challenge",
         "code_challenge_method", "response_mode", "audience"];
 
     public static void MapAuthorize(this WebApplication app)
     {
-        app.MapMethods("/realms/{realm}/protocol/openid-connect/auth", ["GET", "POST"], Auth);
+        app.MapMethods("/realms/{realm}/protocol/openid-connect/auth", ["GET", "POST"],
+            (string realm, HttpContext context, Store store, AuthCodes codes) => Auth(realm, context, store, codes, auth0: false));
         app.MapPost("/realms/{realm}/login-actions/authenticate", Authenticate);
         app.MapMethods("/realms/{realm}/protocol/openid-connect/logout", ["GET", "POST"], Logout);
     }
 
-    internal static async Task<IResult> Auth(string realm, HttpContext context, Store store, AuthCodes codes)
+    /// <param name="auth0">True on the Auth0 <c>/authorize</c> route: only it accepts <c>audience</c> and <c>web_message</c>, which Keycloak ignores or rejects.</param>
+    internal static async Task<IResult> Auth(string realm, HttpContext context, Store store, AuthCodes codes, bool auth0)
     {
         var request = context.Request;
         var form = request.HasFormContentType ? await request.ReadFormAsync() : null;
@@ -64,14 +67,18 @@ public static class Authorize
         if (store.GetClient(r, clientId) is not { } client) return Error("Client not found.");
         if (Get("redirect_uri") is not { } redirectUri || !(r.Lenient || client.RedirectUris.Exists(u => Matches(u, redirectUri))))
             return Error("Invalid parameter: redirect_uri");
-        if (Get("response_mode") is { } mode && mode is not ("query" or "fragment" or "form_post" or "web_message"))
+        var mode = Get("response_mode");
+        if (mode is not (null or "query" or "fragment" or "form_post") && !(auth0 && mode == "web_message"))
             return Error("Invalid parameter: response_mode");
+        // postMessage needs a web origin to target.
+        if (mode == "web_message" && !(Uri.TryCreate(redirectUri, UriKind.Absolute, out var target) && target.Scheme is "http" or "https"))
+            return Error("Invalid parameter: redirect_uri");
 
         // From here on errors go back to the client.
         var issuer = Discovery.Issuer(request, realm);
         var auth = new JsonObject { ["typ"] = "AuthRequest", ["iss"] = issuer, ["exp"] = Now + LoginLifespan };
         foreach (var name in carried)
-            if (Get(name) is { } value) auth[name] = value;
+            if ((auth0 || name != "audience") && Get(name) is { } value) auth[name] = value;
 
         var responseType = Get("response_type");
         if (responseType is null) return Redirect(auth, issuer, "invalid_request", "Missing parameter: response_type");
@@ -215,7 +222,8 @@ public static class Authorize
     /// <summary>
     /// OAuth Web Message response mode: a page loaded in a hidden iframe (or popup) delivers the response by
     /// <c>postMessage</c>, so @auth0/auth0-spa-js can renew tokens silently without a full-page redirect. The message
-    /// targets the already-validated redirect URI's origin, so the authorization code is never posted elsewhere.
+    /// targets the already-validated redirect URI's origin (absolute http/https, checked in <see cref="Auth"/>), so the
+    /// authorization code is never posted elsewhere.
     /// </summary>
     static IResult WebMessage(string redirectUri, List<KeyValuePair<string, string?>> values)
     {

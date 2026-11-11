@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
 
@@ -15,11 +14,12 @@ public static class Auth0
 {
     public static void MapAuth0(this WebApplication app)
     {
-        app.MapMethods("/realms/{realm}/authorize", ["GET", "POST"], Authorize.Auth);
+        app.MapMethods("/realms/{realm}/authorize", ["GET", "POST"],
+            (string realm, HttpContext context, Store store, AuthCodes codes) => Authorize.Auth(realm, context, store, codes, auth0: true));
         app.MapPost("/realms/{realm}/oauth/token", Token0);
         app.MapGet("/realms/{realm}/.well-known/jwks.json", Discovery.Jwks);
         app.MapMethods("/realms/{realm}/userinfo", ["GET", "POST"], Introspection.UserInfo);
-        app.MapMethods("/realms/{realm}/v2/logout", ["GET", "POST"], Logout0);
+        app.MapGet("/realms/{realm}/v2/logout", Logout0); // GET only, like Auth0; Logout0 maps the query, not a form.
     }
 
     /// <summary>auth0-spa-js posts the token request as JSON by default (its <c>useFormData</c> option switches to a form).</summary>
@@ -41,17 +41,17 @@ public static class Auth0
     /// <summary>Flattens a JSON object body into a form so <see cref="Token.Handle"/> reads it like a Keycloak form post.</summary>
     static async Task<IFormCollection> JsonForm(HttpRequest request)
     {
-        using var reader = new StreamReader(request.Body);
-        var body = await reader.ReadToEndAsync();
         var fields = new Dictionary<string, StringValues>();
-        if (body.Length > 0)
+        try
         {
-            JsonObject? json = null;
-            try { json = JsonNode.Parse(body) as JsonObject; }
-            catch (JsonException) { }
-            foreach (var (name, value) in json ?? [])
-                if (value is not null) fields[name] = value.ToString();
+            // JsonDocument tolerates duplicate keys (last one wins here); JsonObject throws on them.
+            using var json = await JsonDocument.ParseAsync(request.Body);
+            if (json.RootElement.ValueKind == JsonValueKind.Object)
+                foreach (var property in json.RootElement.EnumerateObject())
+                    if (property.Value.ValueKind != JsonValueKind.Null)
+                        fields[property.Name] = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : property.Value.GetRawText();
         }
+        catch (JsonException) { } // empty or malformed body: Token.Handle reports the missing grant_type
         return new FormCollection(fields);
     }
 }

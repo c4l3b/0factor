@@ -17,7 +17,7 @@ public static class Cors
             (Oidc + "token", "GET, POST, OPTIONS"), (Oidc + "userinfo", "GET, POST, OPTIONS"),
             (Oidc + "logout", "GET, POST, OPTIONS"), (Oidc + "revoke", "GET, POST, OPTIONS"),
             ("/realms/{realm}/.well-known/openid-configuration", "GET"), (Oidc + "certs", "GET"), ("/realms/{realm}", "GET, HEAD, OPTIONS"),
-            ("/realms/{realm}/oauth/token", "GET, POST, OPTIONS"), ("/realms/{realm}/userinfo", "GET, POST, OPTIONS"), ("/realms/{realm}/v2/logout", "GET, POST, OPTIONS"),
+            ("/realms/{realm}/oauth/token", "GET, POST, OPTIONS"), ("/realms/{realm}/userinfo", "GET, POST, OPTIONS"), ("/realms/{realm}/v2/logout", "GET, OPTIONS"),
         ];
         foreach (var (path, methods) in endpoints)
             app.MapMethods(path, ["OPTIONS"], (HttpContext context) =>

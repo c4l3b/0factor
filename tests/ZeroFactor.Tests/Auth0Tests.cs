@@ -109,4 +109,59 @@ public sealed class Auth0Tests : IDisposable
         Assert.Equal("http://localhost:9876/bye", logout.Headers.Location!.ToString());
         Assert.Contains(logout.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ZF_SESSION=;"));
     }
+
+    [Fact]
+    public async Task Keycloak_auth_endpoint_ignores_audience_and_rejects_web_message()
+    {
+        var factory = Start();
+        var browser = Browser(factory);
+        var query = $"client_id=web&redirect_uri={Redirect}&response_type=code&scope=openid&audience=my.api"
+            + $"&code_challenge={Challenge}&code_challenge_method=S256";
+        var login = await browser.GetAsync(Auth("local", query), Ct);
+        var code = Query(await Post(browser, "local", Field(await Html(login), "auth"), "alice@example.com"))["code"]!;
+        var tokens = await Body(await factory.CreateClient().PostAsync("/realms/local/protocol/openid-connect/token",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code", ["client_id"] = "web", ["code"] = code!,
+                ["code_verifier"] = Verifier, ["redirect_uri"] = Redirect,
+            }), Ct));
+        var aud = TokenTests.Payload((string)tokens["access_token"]!)["aud"];
+        Assert.DoesNotContain("my.api", aud is JsonArray ? Strings(aud) : [(string?)aud]);
+
+        var webMessage = await browser.GetAsync(Auth("local", $"client_id=web&redirect_uri={Redirect}&response_type=code&response_mode=web_message"), Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, webMessage.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/cb")]
+    [InlineData("com.example.app:/cb")]
+    public async Task Web_message_needs_an_http_redirect_uri(string redirectUri)
+    {
+        var response = await Browser(Start()).GetAsync(
+            $"/realms/local/authorize?client_id=web&redirect_uri={Uri.EscapeDataString(redirectUri)}&response_type=code&response_mode=web_message", Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Invalid parameter: redirect_uri", await response.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Theory]
+    [InlineData("not json", "Missing form parameter: grant_type")]
+    [InlineData("", "Missing form parameter: grant_type")]
+    // Duplicate keys: the last grant_type wins, so this reaches the refresh_token grant.
+    [InlineData("""{"grant_type":"authorization_code","grant_type":"refresh_token","client_id":"web"}""", "No refresh token")]
+    public async Task Malformed_json_token_body_is_a_client_error(string body, string description)
+    {
+        var response = await Start().CreateClient().PostAsync("/realms/local/oauth/token",
+            new StringContent(body, Encoding.UTF8, "application/json"), Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = await Body(response);
+        Assert.Equal(("invalid_request", description), ((string?)error["error"], (string?)error["error_description"]));
+    }
+
+    [Fact]
+    public async Task V2_logout_is_get_only()
+    {
+        var response = await Start().CreateClient().PostAsync("/realms/local/v2/logout",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["returnTo"] = "http://localhost:9876/bye" }), Ct);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
 }
