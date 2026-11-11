@@ -34,6 +34,7 @@ app.MapRegister();
 app.MapToken();
 app.MapCorsPreflight();
 app.MapIntrospection();
+app.MapAuth0();
 app.MapManage();
 
 app.Run();

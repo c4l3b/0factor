@@ -21,8 +21,14 @@ public static class Token
 
     static async Task<IResult> Post(string realm, HttpContext context, Store store, AuthCodes codes)
     {
-        if (store.GetRealm(realm) is not { } r) return Discovery.RealmNotFound();
         var form = context.Request.HasFormContentType ? await context.Request.ReadFormAsync() : FormCollection.Empty;
+        return Handle(realm, context, store, codes, form);
+    }
+
+    /// <summary>The token endpoint logic over an already-parsed body, shared by the Keycloak form route and the Auth0 JSON route.</summary>
+    internal static IResult Handle(string realm, HttpContext context, Store store, AuthCodes codes, IFormCollection form)
+    {
+        if (store.GetRealm(realm) is not { } r) return Discovery.RealmNotFound();
         string? Get(string name) => form[name].ToString() is { Length: > 0 } v ? v : null;
 
         if (Get("grant_type") is not { } grantType) return Error("invalid_request", "Missing form parameter: grant_type");
@@ -50,7 +56,7 @@ public static class Token
                     if (computed != code.CodeChallenge) return Error("invalid_grant", "PKCE verification failed: Code mismatch");
                 }
                 if (FindById(code.UserId) is not { Enabled: true } user) return Error("invalid_grant", "User disabled");
-                return Tokens(context, store, r, client, user, Scope(code.Scope), code.Sid, code.AuthTime, code.Nonce, null);
+                return Tokens(context, store, r, client, user, Scope(code.Scope), code.Sid, code.AuthTime, code.Nonce, null, code.Audience);
             }
 
             case "refresh_token":
@@ -65,7 +71,7 @@ public static class Token
                 if (FindById((string?)refresh["sub"]) is not { } user) return Error("invalid_grant", "Unknown user");
                 if (!user.Enabled) return Error("invalid_grant", "User disabled");
                 return Tokens(context, store, r, client, user, (string)refresh["scope"]!, (string)refresh["sid"]!,
-                    (long)refresh["auth_time"]!, null, null);
+                    (long)refresh["auth_time"]!, null, null, (string?)refresh["aud_req"]);
             }
 
             case "client_credentials":
@@ -142,7 +148,7 @@ public static class Token
     /// no session and no refresh token, like Keycloak.
     /// </summary>
     static IResult Tokens(HttpContext context, Store store, Realm realm, Client client, User user, string scope, string? sid,
-        long? authTime, string? nonce, JsonObject? extra)
+        long? authTime, string? nonce, JsonObject? extra, string? requestedAudience = null)
     {
         var key = RealmKey.For(store, realm);
         var issuer = Discovery.Issuer(context.Request, realm.Name);
@@ -158,6 +164,7 @@ public static class Token
             .Where(m => m.Mapper == "oidc-audience-mapper" && m.Config.GetValueOrDefault("access.token.claim") != "false")
             .SelectMany(m => new[] { m.Config.GetValueOrDefault("included.client.audience"), m.Config.GetValueOrDefault("included.custom.audience") })
             .Concat(client.Audience)
+            .Append(requestedAudience)
             .Concat(clientRoles.Keys.Where(k => k != client.ClientId))
             .OfType<string>().Where(a => a != "").Distinct().ToList();
         var resourceAccess = new JsonObject();
@@ -206,12 +213,12 @@ public static class Token
             var refreshExp = offline ? now + OfflineLifespan
                 : Math.Min(now + realm.SsoSessionIdleTimeout, authTime!.Value + realm.SsoSessionMaxLifespan);
             refreshExpiresIn = offline ? 0 : refreshExp - now;
-            refreshToken = Jwt.Create(key, new JsonObject
+            refreshToken = Jwt.Create(key, Compact(new JsonObject
             {
                 ["exp"] = refreshExp, ["iat"] = now, ["jti"] = Guid.NewGuid().ToString(), ["iss"] = issuer, ["aud"] = issuer,
                 ["sub"] = user.Id, ["typ"] = offline ? "Offline" : "Refresh", ["azp"] = client.ClientId, ["sid"] = sid,
-                ["auth_time"] = authTime, ["scope"] = scope,
-            });
+                ["auth_time"] = authTime, ["scope"] = scope, ["aud_req"] = requestedAudience,
+            }));
         }
 
         context.Response.Headers.CacheControl = "no-store";
