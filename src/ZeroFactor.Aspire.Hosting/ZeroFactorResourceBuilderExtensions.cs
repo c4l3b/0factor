@@ -51,7 +51,7 @@ public static class ZeroFactorResourceBuilderExtensions
     /// <param name="port">The host port. When null, Aspire allocates one, which can change on every run.</param>
     /// <param name="isProxied">Whether to proxy the endpoint.</param>
     /// <returns>The resource builder.</returns>
-    [AspireExport("addZeroFactorWithProxy")]
+    [AspireExportIgnore(Reason = "A required parameter after optional port is invalid TypeScript. Use the internal ATS-compatible overload instead.")]
     public static IResourceBuilder<ZeroFactorResource> AddZeroFactor(this IDistributedApplicationBuilder builder, string name, int? port, bool isProxied)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -128,6 +128,7 @@ public static class ZeroFactorResourceBuilderExtensions
     /// <param name="oidc">The 0factor resource builder.</param>
     /// <param name="realm">The realm name.</param>
     /// <returns>The consuming resource builder.</returns>
+    [AspireExport("withZeroFactorReference")]
     public static IResourceBuilder<T> WithReference<T>(this IResourceBuilder<T> builder, IResourceBuilder<ZeroFactorResource> oidc, string realm)
         where T : IResourceWithEnvironment
     {
@@ -201,4 +202,8 @@ public static class ZeroFactorResourceBuilderExtensions
     [AspireExport("withRealmImport")]
     internal static IResourceBuilder<ZeroFactorResource> WithRealmImportInternal(this IResourceBuilder<ZeroFactorResource> builder, string importPath)
         => builder.WithRealmImport(importPath);
+
+    [AspireExport("addZeroFactorWithProxy")]
+    internal static IResourceBuilder<ZeroFactorResource> AddZeroFactorWithProxyInternal(this IDistributedApplicationBuilder builder, string name, bool isProxied, int? port = null)
+        => builder.AddZeroFactor(name, port, isProxied);
 }

@@ -118,7 +118,7 @@ The Docker image alone serves HTTP. For HTTPS without Aspire, set `Kestrel__Endp
 
 ### Issuer references and integration tests
 
-Requires Aspire **13.4.6+**. `ZF_HOSTNAME` is set to the host endpoint so discovery and tokens agree on the issuer. For a reverse proxy, override it with `.WithEnvironment("ZF_HOSTNAME", "https://auth.example.test")`.
+Requires Aspire **13.6.5+**. `ZF_HOSTNAME` is set to the host endpoint so discovery and tokens agree on the issuer. For a reverse proxy, override it with `.WithEnvironment("ZF_HOSTNAME", "https://auth.example.test")`.
 
 The endpoint is **unproxied**, keeping its port stable under `DistributedApplicationTestingBuilder`. For dynamic ports, use `AddZeroFactor(name, port: null, isProxied: true)` and read the allocated endpoint. Parallel runs need distinct or dynamic ports.
 

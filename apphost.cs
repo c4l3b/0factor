@@ -1,4 +1,4 @@
-#:sdk Aspire.AppHost.Sdk@13.6.1
+#:sdk Aspire.AppHost.Sdk@13.6.5
 
 // Dev-only AppHost: `aspire run` from the repo root. Not shipped in the image or the NuGet package.
 var builder = DistributedApplication.CreateBuilder(args);
